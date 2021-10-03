@@ -6,7 +6,7 @@
 // Led Strip
 #define LED_COUNT 88
 struct CRGB leds[LED_COUNT];
-#define LED_STRIP_PIN 2
+#define LED_STRIP_PIN 13
 #define LED_TYPE WS2812B
 #define COLOR_ORDER GRB
 uint8_t brightness = 255;
@@ -14,31 +14,26 @@ uint8_t max_brightness = 255;
 // End Led Strip
 
 // Button
-#define Button1_pin 8 //button 1
-#define Button2_pin 9 //button 2
-#define Button3_pin 10 //button 3
-uint8_t button_delay = 50;
+#define S1_pin 12 // S1
+#define S2_pin 11 // S2
+uint8_t button_delay = 0;
 // End Button
 
 // leds
-#define led1 3
-#define led2 4
-#define led3 5
-#define led4 6
-#define led5 7
+#define led1 A0
+#define led2 A1
+#define led3 A2
+#define led4 A3
+#define led5 A4
 // End leds
 
-//Button values
-bool Prev_Button_1 = HIGH;
-bool Prev_Button_2 = HIGH;
-// End Button values
-
 // MISC
+bool save_on_shutdown = false; // save values to rom on "shutdown" when leds go black
 uint8_t gHue = 0;        // Rotating color index used by many animations
 int animation = 0;  // Initialize current animation
-int animation_count = 12;  // Count animations (Used by button counter to prevent overflow)
-int rom_value = 0;   //Animation value that will be writte to EEPROM
-int eeAddress = 0;   //Location we want the data to be put.
+int animation_count = 10;  // Count animations (Used by button counter to prevent overflow)
+int animation_mem_address = 0;   //Location we want the data to be put.
+int brightness_mem_address = 4; // Location of brightness on eeprom
 TBlendType currentBlending; // NOBLEND or LINEARBLEND
 // End MISC
 
@@ -89,41 +84,40 @@ uint8_t index;
 
 
 // Buttons
-OneButton Button1 = OneButton(
-  Button1_pin,  // Input pin for the button
-  true,        // Button is active LOW
-  true         // Enable internal pull-up resistor
-);
-OneButton Button2 = OneButton(
-  Button2_pin,  // Input pin for the button
-  true,        // Button is active LOW
-  true         // Enable internal pull-up resistor
-);
-OneButton Button3 = OneButton(
-  Button3_pin,  // Input pin for the button
-  true,        // Button is active LOW
-  true         // Enable internal pull-up resistor
-);
+OneButton S1 = OneButton(
+                 S1_pin,  // Input pin for the button
+                 true,        // Button is active LOW
+                 true         // Enable internal pull-up resistor
+               );
+OneButton S2 = OneButton(
+                 S2_pin,  // Input pin for the button
+                 true,        // Button is active LOW
+                 true         // Enable internal pull-up resistor
+               );
 // End Buttons
 
 
 void setup()
 {
+  Serial.begin(9600);
   delay(1000);
-  Button1.attachClick(Button1_click);             // link the function to be called on a singleclick event.
-  Button2.attachClick(Button2_Press);             // link the function to be called on a singleclick event.
-  Button3.attachClick(Button3_Press);             // link the function to be called on a singleclick event.
-  Button1.setPressTicks(200); // that is the time when LongPressStart is called
-  Button2.setPressTicks(200); // that is the time when LongPressStart is called
-  Button2.attachDuringLongPress(longPress2);
-  Button1.attachDuringLongPress(longPress1);
+  S1.attachClick(S1_Press); // attach normal press to S1 (red button)
+  S2.attachClick(S2_Press); // attach normal press to S2 (green button)
+  S2.attachDoubleClick(S2_Double_Press); // attach double press to S2 (green button)
+  S1.setPressTicks(500); // that is the time when LongPressStart is called
+  S2.setPressTicks(500); // that is the time when LongPressStart is called
+  S2.setClickTicks(250); // delay differentiating single clocks from double clicks
+  S2.attachDuringLongPress(S2_long_press); // attach long press to S2 (green button)
+  S1.attachDuringLongPress(S1_long_press); // attach long press to S1 (red button)
+  S2.setDebounceTicks(10);
+  S1.setDebounceTicks(10);
 
-  pinMode(led1,OUTPUT);
-  pinMode(led2,OUTPUT);
-  pinMode(led3,OUTPUT);
-  pinMode(led4,OUTPUT);
-  pinMode(led5,OUTPUT);
-  
+  pinMode(led1, OUTPUT);
+  pinMode(led2, OUTPUT);
+  pinMode(led3, OUTPUT);
+  pinMode(led4, OUTPUT);
+  pinMode(led5, OUTPUT);
+
   FastLED.setBrightness(brightness);
   FastLED.addLeds<LED_TYPE, LED_STRIP_PIN, COLOR_ORDER>(leds, LED_COUNT).setCorrection(TypicalLEDStrip); // GRB ordering is typical
   thisPalette = RainbowColors_p;
@@ -133,59 +127,71 @@ void setup()
   resetvars();
   X = Xorig;
   Y = Yorig; // Initialize the variables
-  
+
   Startup_Animation();
   EEPROM_read();
 }
-
-
 //End Setup
 
 
 void loop()
 {
   Animation_Tick();
-  Button1.tick(); // check status of button 1
-  Button2.tick(); // Check status of button 2
-  Button3.tick(); // check status of button 3
+  S1.tick(); // check status of button 1
+  S2.tick(); // Check status of button 2
   FastLED.show();
   FastLED.setBrightness(brightness);
+  EVERY_N_MILLISECONDS(100)
+  {
+  digitalWrite(led1, LOW);
+  digitalWrite(led2, LOW);
+  digitalWrite(led3, LOW);
+  digitalWrite(led4, LOW);
+  digitalWrite(led5, LOW);
+  }
 }
-
-
 //End Loop
 
+void S1_Press()
+{
+  EVERY_N_MILLISECONDS(button_delay)
+  {
+    previousanimation();
+  }
+}
 
-void Button1_click()
-{ 
-  delay(button_delay);
-  Prev_Button_1 = HIGH;
-  previousanimation();
-}
-void longPress2()
+void S2_long_press()
 {
   EVERY_N_MILLISECONDS(50)
-    {
-      higher_brightness();
-    }
+  {
+    higher_brightness();
+  }
+  Brightness_Check();
 }
-void longPress1()
+
+void S1_long_press()
 {
   EVERY_N_MILLISECONDS(50)
-    {
-     lower_brightness();
-    }
+  {
+    lower_brightness();
+  }
+  Brightness_Check();
 }
-void Button3_Press() 
+
+void S2_Press()
 {
-  delay(button_delay);
-  EEPROM_write();
+  EVERY_N_MILLISECONDS(button_delay)
+  {
+    nextanimation();
+  }
 }
-void Button2_Press()
+
+void S2_Double_Press()
 {
-  delay(button_delay);
-  Prev_Button_2 = HIGH;
-  nextanimation();
+  EVERY_N_MILLISECONDS(button_delay)
+  {
+    EEPROM_write();
+  }
 }
 //End Button check
 
@@ -217,106 +223,6 @@ void nextanimation()
 }
 //End Next Animation
 
-void one_sine_pal(uint8_t colorIndex)
-{ // This is the heart of this program. Sure is short.
-
-  thisphase += thisspeed; // You can change direction and speed individually.
-
-  for (int k = 0; k < LED_COUNT; k++)
-  {                                                                            // For each of the LED's in the strand, set a brightness based on a Speedy_Wave as follows:
-    int thisbright = qsuba(cubicwave8((k * allfreq) + thisphase), thiscutoff); // qsub sets a minimum value called thiscutoff. If < thiscutoff, then bright = 0. Otherwise, bright = 128 (as defined in qsub)..
-    leds[k] = CHSV(bgclr, 255, bgbright);                                      // First set a background colour, but fully saturated.
-    leds[k] += ColorFromPalette(currentPalette, colorIndex + k, thisbright, currentBlending);
-    colorIndex += thisrot;
-  }
-
-  bgclr += bgclrinc; // You can change the background colour or remove this and leave it fixed.
-
-} // one_sine_pal()
-
-void Cahange_Sine()
-{
-
-  uint8_t secondHand = (millis() / 1000) % 60; // Increase this if you want a longer demo.
-  static uint8_t lastSecond = 99;              // Static variable, means it's only defined once. This is our 'debounce' variable.
-  if (lastSecond != secondHand)
-  {
-    lastSecond = secondHand;
-    switch (secondHand)
-    {
-    case 0:
-      break;
-    case 5:
-      targetPalette = RainbowColors_p;
-      bgclr = 0;
-      bgbright = 32;
-      bgclrinc = 1;
-      thisrot = 1;
-      thisdelay = 10;
-      thisspeed = -4;
-      allfreq = 16;
-      thiscutoff = 128;
-      currentBlending = NOBLEND;
-      break;
-    case 10:
-      targetPalette = ForestColors_p;
-      thisspeed = 12;
-      thisrot = 0;
-      thisspeed = 12;
-      thisdelay = 10;
-      thiscutoff = 128;
-      allfreq = 64;
-      bgclr = 50;
-      bgbright = 15;
-      currentBlending = LINEARBLEND;
-      break;
-    case 15:
-      SetupRandomColorPalette();
-      thisrot = 2;
-      thisspeed = 16;
-      break;
-    case 20:
-      targetPalette = LavaColors_p;
-      thisspeed = 4;
-      break;
-      allfreq = 16;
-      bgclr = 50;
-      break;
-    case 25:
-      thiscutoff = 96;
-      thisspeed = -4;
-      thiscutoff = 224;
-      bgclr = 20;
-      bgbright = 8;
-      break;
-    case 30:
-      SetupRandomColorPalette();
-      thiscutoff = 96;
-      thisrot = 1;
-      break;
-    case 35:
-      targetPalette = OceanColors_p;
-      break;
-    case 40:
-      SetupSimilarColorPalette();
-      thiscutoff = 128;
-      break;
-    case 45:
-      SetupSimilarColorPalette();
-      thisspeed = 3;
-      break;
-    case 50:
-      targetPalette = PartyColors_p;
-      break;
-    case 55:
-      break;
-    case 60:
-      break;
-    }
-  }
-
-} // Cahange_Sine()
-
 void SetupRandomColorPalette()
 {
 
@@ -332,23 +238,6 @@ void SetupSimilarColorPalette()
 
 } // SetupSimilarColorPalette()
 
-void Sine_Wave_V1()
-{
-  Cahange_Sine();
-
-  EVERY_N_MILLISECONDS(100)
-  {
-    nblendPaletteTowardPalette(currentPalette, targetPalette, maxChanges); // AWESOME palette blending capability.
-  }
-
-  EVERY_N_MILLISECONDS(thisdelay)
-  {                        // FastLED based non-blocking delay to update/display the sequence.
-    startIndex += thisrot; // Motion speed
-    one_sine_pal(startIndex);
-  }
-}
-//End Sine_Wave_V1
-
 // RainbowColors_p, RainbowStripeColors_p, OceanColors_p, CloudColors_p, ForestColors_p, and PartyColors_p.
 void ChangeMe()
 {
@@ -361,66 +250,66 @@ void ChangeMe()
     lastSecond = secondHand;
     switch (secondHand)
     {
-    case 0:
-      thisrot = 1;
-      thatrot = 1;
-      thisPalette = PartyColors_p;
-      thatPalette = PartyColors_p;
-      break;
-    case 5:
-      thisrot = 0;
-      thatdir = 1;
-      thatspeed = -4;
-      thisPalette = ForestColors_p;
-      thatPalette = OceanColors_p;
-      break;
-    case 10:
-      thatrot = 0;
-      thisPalette = PartyColors_p;
-      thatPalette = RainbowColors_p;
-      break;
-    case 15:
-      allfreq = 16;
-      thisdir = 1;
-      thathue = 128;
-      break;
-    case 20:
-      thiscutoff = 96;
-      thatcutoff = 240;
-      break;
-    case 25:
-      thiscutoff = 96;
-      thatdir = 0;
-      thatcutoff = 96;
-      thisrot = 1;
-      break;
-    case 30:
-      thisspeed = -4;
-      thisdir = 0;
-      thatspeed = -4;
-      break;
-    case 35:
-      thiscutoff = 128;
-      thatcutoff = 128;
-      break;
-    case 40:
-      thisspeed = 3;
-      break;
-    case 45:
-      thisspeed = 3;
-      thatspeed = -3;
-      break;
-    case 50:
-      thisspeed = 2;
-      thatcutoff = 96;
-      thiscutoff = 224;
-      thatspeed = 3;
-      break;
-    case 55:
-      resetvars();
-      break;
-    case 60:
-      break;
+      case 0:
+        thisrot = 1;
+        thatrot = 1;
+        thisPalette = PartyColors_p;
+        thatPalette = PartyColors_p;
+        break;
+      case 5:
+        thisrot = 0;
+        thatdir = 1;
+        thatspeed = -4;
+        thisPalette = ForestColors_p;
+        thatPalette = OceanColors_p;
+        break;
+      case 10:
+        thatrot = 0;
+        thisPalette = PartyColors_p;
+        thatPalette = RainbowColors_p;
+        break;
+      case 15:
+        allfreq = 16;
+        thisdir = 1;
+        thathue = 128;
+        break;
+      case 20:
+        thiscutoff = 96;
+        thatcutoff = 240;
+        break;
+      case 25:
+        thiscutoff = 96;
+        thatdir = 0;
+        thatcutoff = 96;
+        thisrot = 1;
+        break;
+      case 30:
+        thisspeed = -4;
+        thisdir = 0;
+        thatspeed = -4;
+        break;
+      case 35:
+        thiscutoff = 128;
+        thatcutoff = 128;
+        break;
+      case 40:
+        thisspeed = 3;
+        break;
+      case 45:
+        thisspeed = 3;
+        thatspeed = -3;
+        break;
+      case 50:
+        thisspeed = 2;
+        thatcutoff = 96;
+        thiscutoff = 224;
+        thatspeed = 3;
+        break;
+      case 55:
+        resetvars();
+        break;
+      case 60:
+        break;
     }
   }
 
@@ -486,41 +375,11 @@ void Sine_Rainbow(uint8_t thisdelay, uint8_t deltahue)
   //uint8_t thishue = millis()*(255-thisdelay)/255;             // To change the rate, add a beat or something to the result. 'thisdelay' must be a fixed value.
 
   thishue = beat8(50); // This uses a FastLED sawtooth generator. Again, the '50' should not change on the fly.(beatsin8(50,0, 255) +)
-                                              //thishue = beatsin8(50,0,255);                              // This can change speeds on the fly. You can also add these to each other.
+  //thishue = beatsin8(50,0,255);                              // This can change speeds on the fly. You can also add these to each other.
 
   fill_rainbow(leds, LED_COUNT, thishue, deltahue); // Use FastLED's fill_rainbow routine.
 
 } // Sine_Rainbow()
-
-void Speedy_Wave()
-{
-  beatSpeedy_Wave();
-
-  EVERY_N_MILLISECONDS(100)
-  {
-    nblendPaletteTowardPalette(currentPalette, targetPalette, maxChanges); // AWESOME palette blending capability.
-  }
-
-  EVERY_N_SECONDS(5)
-  { // Change the target palette to a random one every 5 seconds.
-    targetPalette = CRGBPalette16(CHSV(random8(), 255, random8(128, 255)), CHSV(random8(), 255, random8(128, 255)), CHSV(random8(), 192, random8(128, 255)), CHSV(random8(), 255, random8(128, 255)));
-  }
-}
-
-void beatSpeedy_Wave()
-{
-
-  uint8_t Speedy_Wave1 = beatsin8(9, 0, 255); // That's the same as beatsin8(9);
-  uint8_t Speedy_Wave2 = beatsin8(8, 0, 255);
-  uint8_t Speedy_Wave3 = beatsin8(7, 0, 255);
-  uint8_t Speedy_Wave4 = beatsin8(6, 0, 255);
-
-  for (int i = 0; i < LED_COUNT; i++)
-  {
-    leds[i] = ColorFromPalette(currentPalette, i + Speedy_Wave1 + Speedy_Wave2 + Speedy_Wave3 + Speedy_Wave4, 255, currentBlending);
-  }
-
-} // beatSpeedy_Wave()
 
 void Star_Night_Animation()
 {
@@ -663,7 +522,7 @@ void Ocean_Wave()
 
   for (int i = 0; i < LED_COUNT; i++)
   { //9948
-    leds[i] = ColorFromPalette(palette, gHue + (i * 2), 255,currentBlending);
+    leds[i] = ColorFromPalette(palette, gHue + (i * 2), 255, currentBlending);
   }
   increase_ghue();
 
@@ -672,7 +531,7 @@ void Ocean_Wave()
 void Palette_filler(uint8_t colorIndex)
 {
   //Fills the leds with palette instead of pattern function
-  
+
   for (int i = 0; i < LED_COUNT; ++i)
   {
     leds[i] = ColorFromPalette(currentPalette, colorIndex, brightness, currentBlending);
@@ -697,10 +556,10 @@ void Palette_PG()
   CRGB black = CRGB::Black;
 
   currentPalette = CRGBPalette16(
-      green, green, green, black,
-      purple, purple, purple, black,
-      green, green, green, black,
-      purple, purple, purple, black);
+                     green, green, green, black,
+                     purple, purple, purple, black,
+                     green, green, green, black,
+                     purple, purple, purple, black);
   currentBlending = LINEARBLEND;
   Palette_filler(gHue);
   increase_ghue();
@@ -708,7 +567,7 @@ void Palette_PG()
 
 void solid_rainbow()
 {
-  fill_solid(leds, LED_COUNT, CHSV(gHue, 255, 255));
+  fill_solid(leds, LED_COUNT, CHSV(cos8(gHue), 255, 255));
   increase_ghue();
 } //solid rainbow
 
@@ -752,89 +611,50 @@ void rainbow_ish()
 
     nblend(leds[pixelnumber], newcolor, 64);
   }
-increase_ghue();
+  increase_ghue();
 } //Rainbow-ish
 
 void Animation_Tick()
 {
   switch (animation)
   {
-  case 0:
-    Sine_Wave_V1();
-    digitalWrite(led1,HIGH);
-    led_reset();
-    break;
-  case 1:
-    solid_rainbow();
-    digitalWrite(led2,HIGH);
-    led_reset();
-    break;
-  case 2:
-    Sine_Wave_V2();
-    digitalWrite(led3,HIGH);
-    led_reset();
-    break;
-  case 3:
-    Sine_Rainbow(200, 10);
-    digitalWrite(led4,HIGH);
-    led_reset();
-    break;
-  case 4:
-    Speedy_Wave();
-    digitalWrite(led5,HIGH);
-    led_reset();
-    break;
-  case 5:
-    Star_Night();
-    digitalWrite(led1,HIGH);
-    digitalWrite(led2,HIGH);
-    led_reset();
-    break;
-  case 6:
-    Random_Palette_Crossfade();
-    digitalWrite(led2,HIGH);
-    digitalWrite(led3,HIGH);
-    led_reset();
-    break;
-  case 7:
-    Palette_PG();
-    digitalWrite(led3,HIGH);
-    digitalWrite(led4,HIGH);
-    led_reset();
-    break;
-  case 8:
-    Running_Stripes();
-    digitalWrite(led4,HIGH);
-    digitalWrite(led5,HIGH);
-    led_reset();
-    break;
-  case 9:
-    Ocean_Wave();
-    digitalWrite(led1,HIGH);
-    digitalWrite(led5,HIGH);
-    led_reset();
-    break;
-  case 10:
-    rainbow_ish();
-    digitalWrite(led1,HIGH);
-    digitalWrite(led2,HIGH);
-    digitalWrite(led3,HIGH);
-    led_reset();
-    break;
-  case 11:
-    Rainbow_Stripe_Palette();
-    digitalWrite(led2,HIGH);
-    digitalWrite(led3,HIGH);
-    digitalWrite(led4,HIGH);
-    led_reset();
-    break;
+    case 0:
+      solid_rainbow();
+      break;
+    case 1:
+      Sine_Wave_V2();
+      break;
+    case 2:
+      Sine_Rainbow(200, 10);
+      break;
+    case 3:
+      Star_Night();
+      break;
+    case 4:
+      Random_Palette_Crossfade();
+      break;
+    case 5:
+      Palette_PG();
+      break;
+    case 6:
+      Running_Stripes();
+      break;
+    case 7:
+      Ocean_Wave();
+      break;
+    case 8:
+      rainbow_ish();
+      break;
+    case 9:
+      Rainbow_Stripe_Palette();
+      break;
   }
 }
 //End Animation Tick
 
 void Flash_Yellow()
 {
-  FastLED.setBrightness(brightness / 6);
+  FastLED.setBrightness(25);
   Solid_Black_With_Delay();
   Solid_Yellow_With_Delay();
   Solid_Black_With_Delay();
@@ -845,7 +665,7 @@ void Flash_Yellow()
 
 void Flash_Green()
 {
-  FastLED.setBrightness(brightness / 6);
+  FastLED.setBrightness(25);
   Solid_Black_With_Delay();
   Solid_Green_With_Delay();
   Solid_Black_With_Delay();
@@ -856,7 +676,7 @@ void Flash_Green()
 
 void Flash_Red()
 {
-  FastLED.setBrightness(brightness / 6);
+  FastLED.setBrightness(25);
   Solid_Black_With_Delay();
   Solid_Red_With_Delay();
   Solid_Black_With_Delay();
@@ -867,6 +687,7 @@ void Flash_Red()
 
 void Startup_Animation()
 {
+  /*
   FastLED.setBrightness(brightness / 6);
   Solid_Black_With_Delay();
   Solid_Red_With_Delay();
@@ -876,6 +697,32 @@ void Startup_Animation()
   Solid_Green_With_Long_Delay();
   Solid_Black_With_Delay();
   FastLED.setBrightness(brightness);
+  */
+  forward();
+  backward();
+  delay(10);
+  forward();
+  backward();
+}
+void forward()
+{
+  for (int i = LED_COUNT/2; i< LED_COUNT; i++)
+  {
+    leds[i] = CHSV(i*6,255,255);//right
+    leds[(i*-1)+LED_COUNT] = CHSV(i*6,255,255);//left
+    FastLED.show();
+    delay(2);
+  }
+}
+void backward()
+{
+  for (int i = LED_COUNT; i> LED_COUNT/2; i--)
+  {
+    leds[i] = CHSV(0,0,0);//right
+    leds[(i*-1)+LED_COUNT] = CHSV(0,0,0);//left
+    FastLED.show();
+    delay(2);
+  }
 }
 //End Startup Animation
 
@@ -883,14 +730,14 @@ void Solid_Red_With_Delay()
 {
   fill_solid(leds, LED_COUNT, CRGB::Red);
   FastLED.show();
-  delay(100);
+  delay(75);
 }
 
 void Solid_Green_With_Delay()
 {
   fill_solid(leds, LED_COUNT, CRGB::Green);
   FastLED.show();
-  delay(100);
+  delay(75);
 }
 
 void Solid_Green_With_Long_Delay()
@@ -904,44 +751,32 @@ void Solid_Black_With_Delay()
 {
   fill_solid(leds, LED_COUNT, CRGB::Black);
   FastLED.show();
-  delay(100);
+  delay(75);
 }
 
 void Solid_Yellow_With_Delay()
 {
   fill_solid(leds, LED_COUNT, CRGB::Yellow);
   FastLED.show();
-  delay(100);
+  delay(75);
 }
 
-void EEPROM_write() 
+void EEPROM_write()
 {
-  rom_value = animation;
-  EEPROM.put(eeAddress, rom_value);
+  EEPROM.put(animation_mem_address, animation);
+  EEPROM.put(brightness_mem_address, brightness);
   Flash_Yellow();
 }
 
-void EEPROM_read() 
+void EEPROM_read()
 {
-  EEPROM.get(eeAddress, rom_value);
-  animation = rom_value;
-}
-
-void led_reset()
-{
-  EVERY_N_MILLISECONDS(20)
-  {
-  digitalWrite(led1,LOW);
-  digitalWrite(led2,LOW);
-  digitalWrite(led3,LOW);
-  digitalWrite(led4,LOW);
-  digitalWrite(led5,LOW);
-  }
+  EEPROM.get(animation_mem_address, animation);
+  EEPROM.get(brightness_mem_address, brightness);
 }
 
 void increase_ghue()
 {
-   EVERY_N_MILLISECONDS(20)
+  EVERY_N_MILLISECONDS(20)
   { // slowly cycle the "base color" through the rainbow
     gHue++;
   }
@@ -950,7 +785,7 @@ void increase_ghue()
 
 void lower_brightness()
 {
-  if (brightness > 1) 
+  if (brightness > 1)
   {
     brightness -= 1;
   }
@@ -962,12 +797,68 @@ void lower_brightness()
 
 void higher_brightness()
 {
- if (brightness < max_brightness -1)
- {
-  brightness += 1; 
- }
- else
- {
-  brightness = max_brightness -1;
- }
+  if (brightness < max_brightness - 1)
+  {
+    brightness += 1;
+  }
+  else
+  {
+    brightness = max_brightness - 1;
+  }
+}
+
+void Brightness_Check()
+{
+  if (brightness > 200)
+  {
+    digitalWrite(led1, HIGH);
+    digitalWrite(led2, HIGH);
+    digitalWrite(led3, HIGH);
+    digitalWrite(led4, HIGH);
+    digitalWrite(led5, HIGH);
+  }
+  if ((brightness < 200) && (brightness > 150))
+  {
+    digitalWrite(led1, HIGH);
+    digitalWrite(led2, HIGH);
+    digitalWrite(led3, HIGH);
+    digitalWrite(led4, HIGH);
+    digitalWrite(led5, LOW);
+
+  }
+  if ((brightness < 150) && (brightness > 100))
+  {
+    digitalWrite(led1, HIGH);
+    digitalWrite(led2, HIGH);
+    digitalWrite(led3, HIGH);
+    digitalWrite(led4, LOW);
+    digitalWrite(led5, LOW);
+  }
+  if ((brightness < 100) && (brightness > 50))
+  {
+    digitalWrite(led1, HIGH);
+    digitalWrite(led2, HIGH);
+    digitalWrite(led3, LOW);
+    digitalWrite(led4, LOW);
+    digitalWrite(led5, LOW);
+  }
+  if (brightness < 50)
+  {
+    digitalWrite(led1, HIGH);
+    digitalWrite(led2, LOW);
+    digitalWrite(led3, LOW);
+    digitalWrite(led4, LOW);
+    digitalWrite(led5, LOW);
+  }
+  if (brightness < 25)
+  {
+    digitalWrite(led1, LOW);
+    digitalWrite(led2, LOW);
+    digitalWrite(led3, LOW);
+    digitalWrite(led4, LOW);
+    digitalWrite(led5, LOW);
+  }
+  Serial.print("Brightness:");
+  Serial.println(brightness);
+
 }
