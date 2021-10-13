@@ -11,6 +11,7 @@ struct CRGB leds[LED_COUNT];
 #define COLOR_ORDER GRB
 uint8_t brightness = 255;
 uint8_t max_brightness = 255;
+uint8_t min_brightness = 100;
 // End Led Strip
 
 // Button
@@ -24,17 +25,18 @@ uint8_t button_delay = 0;
 #define led2 A1
 #define led3 A2
 #define led4 A3
-#define led5 A4
+#define led5 3
 // End leds
 
 // MISC
-bool save_on_shutdown = false; // save values to rom on "shutdown" when leds go black
-uint8_t gHue = 0;        // Rotating color index used by many animations
-int animation = 0;  // Initialize current animation
-int animation_count = 10;  // Count animations (Used by button counter to prevent overflow)
-int animation_mem_address = 0;   //Location we want the data to be put.
-int brightness_mem_address = 4; // Location of brightness on eeprom
-TBlendType currentBlending; // NOBLEND or LINEARBLEND
+bool save_on_shutdown = false;        // save values to rom on "shutdown" when leds go black
+uint8_t base_index = 0;               // Rotating index value used by many animations
+uint8_t base_speed = 0;               // base speed of all animations
+uint8_t animation = 0;                // Initialize current animation
+uint8_t animation_count = 11;         // Count animations (Used by button counter to prevent overflow)
+uint8_t animation_mem_address = 0;    // Location we want the data to be put.
+uint8_t brightness_mem_address = 4;   // Location of brightness on eeprom
+TBlendType currentBlending;           // NOBLEND or LINEARBLEND
 // End MISC
 
 // Sine V1 variables
@@ -522,9 +524,9 @@ void Ocean_Wave()
 
   for (int i = 0; i < LED_COUNT; i++)
   { //9948
-    leds[i] = ColorFromPalette(palette, gHue + (i * 2), 255, currentBlending);
+    leds[i] = ColorFromPalette(palette, base_index + (i * 2), 255, currentBlending);
   }
-  increase_ghue();
+  base_cycle();
 
 } // Ocean_Wave()
 
@@ -544,8 +546,8 @@ void Rainbow_Stripe_Palette()
   //Red white and blue colors
   currentPalette = RainbowStripeColors_p;
   currentBlending = LINEARBLEND;
-  Palette_filler(gHue);
-  increase_ghue();
+  Palette_filler(base_index);
+  base_cycle();
 } //Red Whit Blue palette
 
 void Palette_PG()
@@ -561,14 +563,32 @@ void Palette_PG()
                      green, green, green, black,
                      purple, purple, purple, black);
   currentBlending = LINEARBLEND;
-  Palette_filler(gHue);
-  increase_ghue();
+  Palette_filler(base_index);
+  base_cycle();
 } //Purple and Green palette
+
+
+void Palette_RP()
+{
+  //purple, blue and red colors
+  CRGB blue = CHSV(HUE_BLUE, 255, 255);
+  CRGB purple = CHSV(HUE_PURPLE, 255, 255);
+  CRGB red = CHSV(HUE_RED, 255, 255);
+
+  currentPalette = CRGBPalette16(
+                     red, red, purple, blue,
+                     blue, purple, red, red,
+                     purple, blue, blue, purple,
+                     red, red, purple, blue);
+  currentBlending = LINEARBLEND;
+  Palette_filler(base_index);
+  base_cycle();
+} //Purple, Blue and Red palette
 
 void solid_rainbow()
 {
-  fill_solid(leds, LED_COUNT, CHSV(cos8(gHue), 255, 255));
-  increase_ghue();
+  fill_solid(leds, LED_COUNT, CHSV(cos8(base_index), 255, 255));
+  base_cycle();
 } //solid rainbow
 
 void rainbow_ish()
@@ -582,7 +602,7 @@ void rainbow_ish()
   uint16_t brightnessthetainc16 = beatsin88(203, (25 * 256), (40 * 256));
   uint8_t msmultiplier = beatsin88(147, 23, 60);
 
-  uint16_t hue16 = sHue16; //gHue * 256;
+  uint16_t hue16 = sHue16; //base_index * 256;
   uint16_t hueinc16 = beatsin88(113, 1, 3000);
 
   uint16_t ms = millis();
@@ -611,7 +631,7 @@ void rainbow_ish()
 
     nblend(leds[pixelnumber], newcolor, 64);
   }
-  increase_ghue();
+  base_cycle();
 } //Rainbow-ish
 
 void Animation_Tick()
@@ -647,6 +667,9 @@ void Animation_Tick()
       break;
     case 9:
       Rainbow_Stripe_Palette();
+      break;
+    case 10:
+      Palette_RP();
       break;
   }
 }
@@ -687,23 +710,13 @@ void Flash_Red()
 
 void Startup_Animation()
 {
-  /*
-  FastLED.setBrightness(brightness / 6);
-  Solid_Black_With_Delay();
-  Solid_Red_With_Delay();
-  Solid_Black_With_Delay();
-  Solid_Red_With_Delay();
-  Solid_Black_With_Delay();
-  Solid_Green_With_Long_Delay();
-  Solid_Black_With_Delay();
-  FastLED.setBrightness(brightness);
-  */
   forward();
   backward();
   delay(10);
   forward();
   backward();
 }
+
 void forward()
 {
   for (int i = LED_COUNT/2; i< LED_COUNT; i++)
@@ -774,24 +787,24 @@ void EEPROM_read()
   EEPROM.get(brightness_mem_address, brightness);
 }
 
-void increase_ghue()
+void base_cycle()
 {
-  EVERY_N_MILLISECONDS(20)
-  { // slowly cycle the "base color" through the rainbow
-    gHue++;
+  EVERY_N_MILLISECONDS(25)
+  { // Speed that effects almost all animations
+    base_index++;
   }
 
 }
 
 void lower_brightness()
 {
-  if (brightness > 1)
+  if (brightness > min_brightness + 1)
   {
     brightness -= 1;
   }
   else
   {
-    brightness = 1;
+    brightness = min_brightness + 1;
   }
 }
 
@@ -809,7 +822,7 @@ void higher_brightness()
 
 void Brightness_Check()
 {
-  if (brightness > 200)
+  if (brightness > 230)
   {
     digitalWrite(led1, HIGH);
     digitalWrite(led2, HIGH);
@@ -817,7 +830,7 @@ void Brightness_Check()
     digitalWrite(led4, HIGH);
     digitalWrite(led5, HIGH);
   }
-  if ((brightness < 200) && (brightness > 150))
+  if ((brightness < 230) && (brightness > 200))
   {
     digitalWrite(led1, HIGH);
     digitalWrite(led2, HIGH);
@@ -826,7 +839,7 @@ void Brightness_Check()
     digitalWrite(led5, LOW);
 
   }
-  if ((brightness < 150) && (brightness > 100))
+  if ((brightness < 200) && (brightness > 170))
   {
     digitalWrite(led1, HIGH);
     digitalWrite(led2, HIGH);
@@ -834,7 +847,7 @@ void Brightness_Check()
     digitalWrite(led4, LOW);
     digitalWrite(led5, LOW);
   }
-  if ((brightness < 100) && (brightness > 50))
+  if ((brightness < 170) && (brightness > 140))
   {
     digitalWrite(led1, HIGH);
     digitalWrite(led2, HIGH);
@@ -842,7 +855,7 @@ void Brightness_Check()
     digitalWrite(led4, LOW);
     digitalWrite(led5, LOW);
   }
-  if (brightness < 50)
+  if ((brightness < 140) && (brightness > 110))
   {
     digitalWrite(led1, HIGH);
     digitalWrite(led2, LOW);
@@ -850,7 +863,7 @@ void Brightness_Check()
     digitalWrite(led4, LOW);
     digitalWrite(led5, LOW);
   }
-  if (brightness < 25)
+  if (brightness < 110)
   {
     digitalWrite(led1, LOW);
     digitalWrite(led2, LOW);
