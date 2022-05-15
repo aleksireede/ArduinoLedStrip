@@ -1,23 +1,12 @@
-#include <PCF8575.h> //I2C i/o expander
-//#include <OneButton.h> //Button controller
-#include <FastLED.h> //LED strip controller
-#include <EEPROM.h> //Memory controller
-//#include "PCF8575.h"
-
-PCF8575 PCF(0x20); //IO expander address
-
-// Discrete leds
-#define led1 A0
-#define led2 A1
-#define led3 A2
-#define led4 A3
-#define led5 A4
-// End Discrete leds
+#include <FastLED.h>
+#include <OneButton.h>
+#include <EEPROM.h>
+// Inlcude libraries
 
 // Led Strip
 #define LED_COUNT 88
 struct CRGB leds[LED_COUNT];
-#define LED_STRIP_PIN 13
+#define LED_STRIP_PIN 3
 #define LED_TYPE WS2812B
 #define COLOR_ORDER GRB
 uint8_t brightness = 255;
@@ -25,13 +14,32 @@ uint8_t max_brightness = 255;
 uint8_t min_brightness = 100;
 // End Led Strip
 
-// MISC LIST ETC.
-int nothing_pressed = -20;
-int red_pressed = -24;
-int green_pressed = -28;
-int power_pressed = 28;
-int Remote_value_current = 0;
-int Remote_value_previous = 0;
+// Button
+#define S1_pin A0 // Vihr
+#define S2_pin A5 // PUN
+uint8_t button_delay = 0;
+#define S3_pin_no 12
+#define S3_pin_nc 13
+long previousMillis = 0;
+long off_interval = 15000;
+// End Button
+
+// 7-segment display 4-digit
+#define SEG_A 4
+#define SEG_B 5
+#define SEG_C 6
+#define SEG_D 7
+#define SEG_E 8
+#define SEG_F 9
+#define SEG_G 10
+#define SEG_DP 11
+#define DIG_1 A1
+#define DIG_2 A2
+#define DIG_3 A3
+#define DIG_4 A4
+// END 7-segment display 4-digit
+
+// MISC
 bool save_on_shutdown = false;        // save values to rom on "shutdown" when leds go black
 uint8_t base_index = 0;               // Rotating index value used by many animations
 uint8_t base_speed = 0;               // base speed of all animations
@@ -40,6 +48,9 @@ uint8_t animation_count = 11;         // Count animations (Used by button counte
 uint8_t animation_mem_address = 0;    // Location we want the data to be put.
 uint8_t brightness_mem_address = 4;   // Location of brightness on eeprom
 TBlendType currentBlending;           // NOBLEND or LINEARBLEND
+bool ON_OFF_STATE = true;
+bool BRIGHTNESS_MODIFY = false;
+bool BRIGHTNESS_MODIFY_check = false;
 // End MISC
 
 // Sine V1 variables
@@ -87,14 +98,66 @@ uint16_t Yn;
 uint8_t index;
 // End Palette definitions
 
-void setup() { //SETUP
-  PCF.begin();
-  pinMode(led1, OUTPUT);
-  pinMode(led2, OUTPUT);
-  pinMode(led3, OUTPUT);
-  pinMode(led4, OUTPUT);
-  pinMode(led5, OUTPUT);
-  
+
+// Buttons
+OneButton S1 = OneButton(
+                 S1_pin,  // Input pin for the button
+                 true,        // Button is active LOW
+                 true         // Enable internal pull-up resistor
+               );
+OneButton S2 = OneButton(
+                 S2_pin,  // Input pin for the button
+                 true,        // Button is active LOW
+                 true         // Enable internal pull-up resistor
+               );
+OneButton S3 = OneButton(
+                 S3_pin_no,  // Input pin for the button
+                 true,        // Button is active LOW
+                 true         // Enable internal pull-up resistor
+               );
+// End Buttons
+
+void setup()
+{
+  Serial.begin(9600);
+  delay(1000);
+  // S1
+  S1.setDebounceTicks(10);// Prevent accidental double press
+  S1.setPressTicks(500); // that is the time when LongPressStart is called
+  S1.setClickTicks(250); // delay differentiating single clocks from double clicks
+
+  S1.attachClick(S1_Press); // attach normal press to S1 (red button)
+  S1.attachDuringLongPress(S1_long_press); // attach long press to S1 (red button)
+  S1.attachLongPressStop(S1_long_press_stop); // called when long press stopped
+  S1.attachDoubleClick(Check_brightness);
+  // S2
+  S2.setPressTicks(500); // that is the time when LongPressStart is called
+  S2.setClickTicks(250); // delay differentiating single clocks from double clicks
+  S2.setDebounceTicks(10);// Prevent accidental double press
+
+  S2.attachClick(S2_Press); // attach normal press to S2 (green button)
+  S2.attachDuringLongPress(S2_long_press); // attach long press to S2 (green button)
+  S2.attachDoubleClick(Check_brightness); // attach double press to S2 (green button)
+  S2.attachLongPressStop(S2_long_press_stop); // called when long press stops
+  // S3
+  S3.setDebounceTicks(10);// Prevent accidental double press
+  S3.setClickTicks(250); // delay differentiating single clocks from double clicks
+  S3.attachClick(ON_OFF_Press);// attach normal press to ON_OFF_BUTTON
+  S3.attachDoubleClick(WRITE_TO_EEPROM); // write current animation to memory
+
+  pinMode(SEG_A, OUTPUT);
+  pinMode(SEG_B, OUTPUT);
+  pinMode(SEG_C, OUTPUT);
+  pinMode(SEG_D, OUTPUT);
+  pinMode(SEG_E, OUTPUT);
+  pinMode(SEG_F, OUTPUT);
+  pinMode(SEG_G, OUTPUT);
+  pinMode(SEG_DP, OUTPUT);
+  pinMode(DIG_1, OUTPUT);
+  pinMode(DIG_2, OUTPUT);
+  pinMode(DIG_3, OUTPUT);
+  pinMode(DIG_4, OUTPUT);
+
   FastLED.setBrightness(brightness);
   FastLED.addLeds<LED_TYPE, LED_STRIP_PIN, COLOR_ORDER>(leds, LED_COUNT).setCorrection(TypicalLEDStrip); // GRB ordering is typical
   thisPalette = RainbowColors_p;
@@ -105,64 +168,123 @@ void setup() { //SETUP
   X = Xorig;
   Y = Yorig; // Initialize the variables
 
-  Startup_Animation(); //Initialize one time small animation at startup
-  EEPROM_read(); //Read the last saved animation in memory
-  
-}//END SETUP
+  Startup_Animation();
+  EEPROM_read();
+}
+//End Setup
 
 
-// List of patterns to cycle through.  Each is defined as a separate function below.
-typedef void (*SimplePatternList[])();
-SimplePatternList gPatterns = {solid_rainbow, Sine_Wave_V2, Sine_Rainbow, Star_Night, Random_Palette_Crossfade, Palette_PG, Running_Stripes, Ocean_Wave, rainbow_ish, Rainbow_Stripe_Palette, Palette_RP};
-
-uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
-
-void loop() { //LOOP
-  EVERY_N_MILLISECONDS(50) //Ledien Tyhjennys
+void loop()
+{
+  if (!ON_OFF_STATE) // check if off state enabled
   {
-    PCF.write16(LOW);
-    digitalWrite(led1, LOW);
-    digitalWrite(led2, LOW);
-    digitalWrite(led3, LOW);
-    digitalWrite(led4, LOW);
-    digitalWrite(led5, LOW);
-  } //END Ledien tyhjennys
-  gPatterns[gCurrentPatternNumber]();
-  Remote_read();
-  FastLED.setBrightness(brightness);
-  FastLED.show();
-} //END LOOP
-
-void Remote_read(){
-  int x = PCF.read16();
-  Serial.print("Read ");
-  //Serial.println(Remote_value_current);
-  Remote_value_current = (x / 1000) % 100;
-  if (Remote_value_current == red_pressed){ //Begin red
-    if (Remote_value_previous == red_pressed){
-      //Long press red
-    }
-    else if (Remote_value_previous == nothing_pressed){
-      nextPattern(); //normal press red
-    }
-  } //End red
-  
-  Remote_value_previous = Remote_value_current;
+    S3.tick();
+    FastLED.setBrightness(0);
+    FastLED.show();
+    SEG_SHOW_OFF();
+    return; // exit and run loop() again
   }
+  previousMillis = millis();
+  Animation_Tick();
+  S1.tick(); // check status of button 1
+  S2.tick(); // Check status of button 2
+  S3.tick(); // Check status of button 3
+  FastLED.show();
+  FastLED.setBrightness(brightness);
+  if (BRIGHTNESS_MODIFY_check)
+  {
+    Brightness_Check();
+    BRIGHTNESS_MODIFY = true;
+    return; // exit and run loop() again
+  }
+  BRIGHTNESS_MODIFY = false;
+}
+//End Loop
 
-#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
-  
-void nextPattern()
+void S1_Press()
 {
-  // add one to the current pattern number, and wrap around at the end
-  gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE( gPatterns);
+  EVERY_N_MILLISECONDS(button_delay)
+  {
+    previousanimation();
+  }
 }
 
-void previousPattern()
+void S2_long_press()
 {
-  // add one to the current pattern number, and wrap around at the end
-  gCurrentPatternNumber =  (gCurrentPatternNumber - 1)% ARRAY_SIZE( gPatterns);
+  BRIGHTNESS_MODIFY_check = true;
+  EVERY_N_MILLISECONDS(50)
+  {
+    higher_brightness();
+  }
 }
+
+void S1_long_press()
+{
+  BRIGHTNESS_MODIFY_check = true;
+  EVERY_N_MILLISECONDS(50)
+  {
+    lower_brightness();
+  }
+}
+void Check_brightness()
+{
+  BRIGHTNESS_MODIFY_check = !BRIGHTNESS_MODIFY_check;
+}
+
+void S2_Press()
+{
+  EVERY_N_MILLISECONDS(button_delay)
+  {
+    nextanimation();
+  }
+}
+
+void WRITE_TO_EEPROM()
+{
+  EVERY_N_MILLISECONDS(button_delay)
+  {
+    EEPROM_write();
+  }
+}
+
+void ON_OFF_Press()
+{
+  ON_OFF_STATE = !ON_OFF_STATE;
+}
+//End Button check
+
+void S2_long_press_stop()
+{
+  BRIGHTNESS_MODIFY_check = false;
+}
+
+void S1_long_press_stop()
+{
+  BRIGHTNESS_MODIFY_check = false;
+}
+
+void previousanimation()
+{
+  Flash_Red();
+  if (animation > 0)
+  {
+    animation -= 1;
+    return; // exit when condition met and go to previous function
+  }
+  animation = animation_count - 1;
+} //End Prevcious animation
+
+void nextanimation()
+{
+  Flash_Green();
+  if (animation < animation_count - 1)
+  {
+    animation += 1;
+    return; // exit when condition met and go to previous function
+  }
+  animation = 0;
+}
+//End Next Animation
 
 void SetupRandomColorPalette()
 {
@@ -185,73 +307,73 @@ void ChangeMe()
 
   uint8_t secondHand = (millis() / 1000) % 60; // Increase this if you want a longer demo.
   static uint8_t lastSecond = 99;              // Static variable, means it's only defined once. This is our 'debounce' variable.
-
-  if (lastSecond != secondHand)
+  if (lastSecond == secondHand)
   {
-    lastSecond = secondHand;
-    switch (secondHand)
-    {
-      case 0:
-        thisrot = 1;
-        thatrot = 1;
-        thisPalette = PartyColors_p;
-        thatPalette = PartyColors_p;
-        break;
-      case 5:
-        thisrot = 0;
-        thatdir = 1;
-        thatspeed = -4;
-        thisPalette = ForestColors_p;
-        thatPalette = OceanColors_p;
-        break;
-      case 10:
-        thatrot = 0;
-        thisPalette = PartyColors_p;
-        thatPalette = RainbowColors_p;
-        break;
-      case 15:
-        allfreq = 16;
-        thisdir = 1;
-        thathue = 128;
-        break;
-      case 20:
-        thiscutoff = 96;
-        thatcutoff = 240;
-        break;
-      case 25:
-        thiscutoff = 96;
-        thatdir = 0;
-        thatcutoff = 96;
-        thisrot = 1;
-        break;
-      case 30:
-        thisspeed = -4;
-        thisdir = 0;
-        thatspeed = -4;
-        break;
-      case 35:
-        thiscutoff = 128;
-        thatcutoff = 128;
-        break;
-      case 40:
-        thisspeed = 3;
-        break;
-      case 45:
-        thisspeed = 3;
-        thatspeed = -3;
-        break;
-      case 50:
-        thisspeed = 2;
-        thatcutoff = 96;
-        thiscutoff = 224;
-        thatspeed = 3;
-        break;
-      case 55:
-        resetvars();
-        break;
-      case 60:
-        break;
-    }
+    return;
+  }
+  lastSecond = secondHand;
+  switch (secondHand)
+  {
+    case 0:
+      thisrot = 1;
+      thatrot = 1;
+      thisPalette = PartyColors_p;
+      thatPalette = PartyColors_p;
+      break;
+    case 5:
+      thisrot = 0;
+      thatdir = 1;
+      thatspeed = -4;
+      thisPalette = ForestColors_p;
+      thatPalette = OceanColors_p;
+      break;
+    case 10:
+      thatrot = 0;
+      thisPalette = PartyColors_p;
+      thatPalette = RainbowColors_p;
+      break;
+    case 15:
+      allfreq = 16;
+      thisdir = 1;
+      thathue = 128;
+      break;
+    case 20:
+      thiscutoff = 96;
+      thatcutoff = 240;
+      break;
+    case 25:
+      thiscutoff = 96;
+      thatdir = 0;
+      thatcutoff = 96;
+      thisrot = 1;
+      break;
+    case 30:
+      thisspeed = -4;
+      thisdir = 0;
+      thatspeed = -4;
+      break;
+    case 35:
+      thiscutoff = 128;
+      thatcutoff = 128;
+      break;
+    case 40:
+      thisspeed = 3;
+      break;
+    case 45:
+      thisspeed = 3;
+      thatspeed = -3;
+      break;
+    case 50:
+      thisspeed = 2;
+      thatcutoff = 96;
+      thiscutoff = 224;
+      thatspeed = 3;
+      break;
+    case 55:
+      resetvars();
+      break;
+    case 60:
+      break;
   }
 
 } // ChangeMe()
@@ -386,37 +508,35 @@ void ChangePalettePeriodically()
   uint8_t secondHand = (millis() / 1000) % 60;
   static uint8_t lastSecond = 99;
 
-  if (lastSecond != secondHand)
+  if (lastSecond == secondHand)
   {
-    lastSecond = secondHand;
-    CRGB p = CHSV(HUE_PURPLE, 255, 255);
-    CRGB g = CHSV(HUE_GREEN, 255, 255);
-    CRGB b = CRGB::Black;
-    CRGB w = CRGB::White;
-    if (secondHand == 0)
-    {
+    return;
+  }
+  lastSecond = secondHand;
+  CRGB p = CHSV(HUE_PURPLE, 255, 255);
+  CRGB g = CHSV(HUE_GREEN, 255, 255);
+  CRGB b = CRGB::Black;
+  CRGB w = CRGB::White;
+  switch (secondHand)
+  {
+    case 0:
       targetPalette = RainbowColors_p;
-    }
-    if (secondHand == 10)
-    {
+      break;
+    case 10:
       targetPalette = CRGBPalette16(g, g, b, b, p, p, b, b, g, g, b, b, p, p, b, b);
-    }
-    if (secondHand == 20)
-    {
+      break;
+    case 20:
       targetPalette = CRGBPalette16(b, b, b, w, b, b, b, w, b, b, b, w, b, b, b, w);
-    }
-    if (secondHand == 30)
-    {
+      break;
+    case 30:
       targetPalette = LavaColors_p;
-    }
-    if (secondHand == 40)
-    {
+      break;
+    case 40:
       targetPalette = CloudColors_p;
-    }
-    if (secondHand == 50)
-    {
+      break;
+    case 50:
       targetPalette = PartyColors_p;
-    }
+      break;
   }
 
 } // ChangePalettePeriodically()
@@ -573,6 +693,47 @@ void rainbow_ish()
   base_cycle();
 } //Rainbow-ish
 
+void Animation_Tick()
+{
+  segment_display();
+  switch (animation)
+  {
+    case 0:
+      solid_rainbow();
+      break;
+    case 1:
+      Sine_Wave_V2();
+      break;
+    case 2:
+      Sine_Rainbow(200, 10);
+      break;
+    case 3:
+      Star_Night();
+      break;
+    case 4:
+      Random_Palette_Crossfade();
+      break;
+    case 5:
+      Palette_PG();
+      break;
+    case 6:
+      Running_Stripes();
+      break;
+    case 7:
+      Ocean_Wave();
+      break;
+    case 8:
+      rainbow_ish();
+      break;
+    case 9:
+      Rainbow_Stripe_Palette();
+      break;
+    case 10:
+      Palette_RP();
+      break;
+  }
+}
+//End Animation Tick
 
 void Flash_Yellow()
 {
@@ -618,20 +779,20 @@ void Startup_Animation()
 
 void forward()
 {
-  for (int i = LED_COUNT/2; i< LED_COUNT; i++)
+  for (int i = LED_COUNT / 2; i < LED_COUNT; i++)
   {
-    leds[i] = CHSV(i*6,255,255);//right
-    leds[(i*-1)+LED_COUNT] = CHSV(i*6,255,255);//left
+    leds[i] = CHSV(i * 6, 255, 255); //right
+    leds[(i * -1) + LED_COUNT] = CHSV(i * 6, 255, 255); //left
     FastLED.show();
     delay(2);
   }
 }
 void backward()
 {
-  for (int i = LED_COUNT; i> LED_COUNT/2; i--)
+  for (int i = LED_COUNT; i > LED_COUNT / 2; i--)
   {
-    leds[i] = CHSV(0,0,0);//right
-    leds[(i*-1)+LED_COUNT] = CHSV(0,0,0);//left
+    leds[i] = CHSV(0, 0, 0); //right
+    leds[(i * -1) + LED_COUNT] = CHSV(0, 0, 0); //left
     FastLED.show();
     delay(2);
   }
@@ -697,116 +858,380 @@ void base_cycle()
 
 void lower_brightness()
 {
-  if (brightness > min_brightness + 1)
+  if (brightness > min_brightness)
   {
     brightness -= 1;
+    return;
   }
-  else
-  {
-    brightness = min_brightness + 1;
-  }
+  brightness = min_brightness;
 }
 
 void higher_brightness()
 {
-  if (brightness < max_brightness - 1)
+  if (brightness < max_brightness)
   {
     brightness += 1;
+    return;
   }
-  else
-  {
-    brightness = max_brightness - 1;
-  }
+  brightness = max_brightness;
 }
 
 void Brightness_Check()
 {
-  if (brightness > 230)
+  uint8_t brightness_number = brightness - 100;
+  if ((brightness_number < 999) && (brightness_number > 99))
   {
-    digitalWrite(led1, HIGH);
-    digitalWrite(led2, HIGH);
-    digitalWrite(led3, HIGH);
-    digitalWrite(led4, HIGH);
-    digitalWrite(led5, HIGH);
+    activate_dig(1);
+    shownumber(brightness_number % 10);
+    delay(1);
+    LETTER_BLANK();
+    delay(1);
+    activate_dig(2);
+    shownumber(brightness_number / 10 % 10);
+    delay(1);
+    LETTER_BLANK();
+    delay(1);
+    activate_dig(3);
+    shownumber(brightness_number / 100 % 10);
+    delay(1);
+    LETTER_BLANK();
+    delay(1);
+    return;
   }
-  if ((brightness < 230) && (brightness > 200))
+  if ((brightness_number < 99) && (brightness_number > 9))
   {
-    digitalWrite(led1, HIGH);
-    digitalWrite(led2, HIGH);
-    digitalWrite(led3, HIGH);
-    digitalWrite(led4, HIGH);
-    digitalWrite(led5, LOW);
-
+    activate_dig(1);
+    shownumber(brightness_number % 10);
+    delay(1);
+    LETTER_BLANK();
+    delay(1);
+    activate_dig(2);
+    shownumber(brightness_number / 10 % 10);
+    delay(1);
+    LETTER_BLANK();
+    delay(1);
+    return;
   }
-  if ((brightness < 200) && (brightness > 170))
+  activate_dig(1);
+  shownumber(brightness_number);
+  delay(1);
+  LETTER_BLANK();
+  delay(1);
+}
+void activate_dig(uint8_t dig)
+{
+  switch (dig)
   {
-    digitalWrite(led1, HIGH);
-    digitalWrite(led2, HIGH);
-    digitalWrite(led3, HIGH);
-    digitalWrite(led4, LOW);
-    digitalWrite(led5, LOW);
+    case 1:
+      digitalWrite(DIG_1, LOW);
+      digitalWrite(DIG_2, HIGH);
+      digitalWrite(DIG_3, HIGH);
+      digitalWrite(DIG_4, HIGH);
+      break;
+    case 2:
+      digitalWrite(DIG_1, HIGH);
+      digitalWrite(DIG_2, LOW);
+      digitalWrite(DIG_3, HIGH);
+      digitalWrite(DIG_4, HIGH);
+      break;
+    case 3:
+      digitalWrite(DIG_1, HIGH);
+      digitalWrite(DIG_2, HIGH);
+      digitalWrite(DIG_3, LOW);
+      digitalWrite(DIG_4, HIGH);
+      break;
+    case 4:
+      digitalWrite(DIG_1, HIGH);
+      digitalWrite(DIG_2, HIGH);
+      digitalWrite(DIG_3, HIGH);
+      digitalWrite(DIG_4, LOW);
+      break;
+    case 5:
+      digitalWrite(DIG_1, HIGH);
+      digitalWrite(DIG_2, HIGH);
+      digitalWrite(DIG_3, HIGH);
+      digitalWrite(DIG_4, HIGH);
+      break;
   }
-  if ((brightness < 170) && (brightness > 140))
-  {
-    digitalWrite(led1, HIGH);
-    digitalWrite(led2, HIGH);
-    digitalWrite(led3, LOW);
-    digitalWrite(led4, LOW);
-    digitalWrite(led5, LOW);
+}
+void SEG_SHOW_OFF()
+{
+  Serial.println(millis());
+  Serial.println(millis() - previousMillis);
+  if (millis() - previousMillis > off_interval) {
+    activate_dig(5);
+    LETTER_BLANK();
+    return;
   }
-  if ((brightness < 140) && (brightness > 110))
-  {
-    digitalWrite(led1, HIGH);
-    digitalWrite(led2, LOW);
-    digitalWrite(led3, LOW);
-    digitalWrite(led4, LOW);
-    digitalWrite(led5, LOW);
-  }
-  if (brightness < 110)
-  {
-    digitalWrite(led1, LOW);
-    digitalWrite(led2, LOW);
-    digitalWrite(led3, LOW);
-    digitalWrite(led4, LOW);
-    digitalWrite(led5, LOW);
-  }
-  Serial.print("Brightness:");
-  Serial.println(brightness);
-
+  LETTER_BLANK();
+  delay(1);
+  activate_dig(3);
+  NUMBER_0();
+  delay(1);
+  LETTER_BLANK();
+  delay(1);
+  activate_dig(2);
+  LETTER_F();
+  delay(1);
+  LETTER_BLANK();
+  delay(1);
+  activate_dig(1);
+  LETTER_F();
+  delay(1);
+  LETTER_BLANK();
+  delay(1);
 }
 
+void NUMBER_0()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_B, HIGH);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, HIGH);
+  digitalWrite(SEG_E, HIGH);
+  digitalWrite(SEG_F, HIGH);
+  digitalWrite(SEG_G, LOW);
+  digitalWrite(SEG_DP, LOW);
+}
+void NUMBER_8()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_B, HIGH);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, HIGH);
+  digitalWrite(SEG_E, HIGH);
+  digitalWrite(SEG_F, HIGH);
+  digitalWrite(SEG_G, HIGH);
+  digitalWrite(SEG_DP, LOW);
+}
+void NUMBER_9()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_B, HIGH);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, HIGH);
+  digitalWrite(SEG_E, LOW);
+  digitalWrite(SEG_F, HIGH);
+  digitalWrite(SEG_G, HIGH);
+  digitalWrite(SEG_DP, LOW);
+}
+void NUMBER_7()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_B, HIGH);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, LOW);
+  digitalWrite(SEG_E, LOW);
+  digitalWrite(SEG_F, LOW);
+  digitalWrite(SEG_G, LOW);
+  digitalWrite(SEG_DP, LOW);
+}
+void NUMBER_6()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_B, LOW);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, HIGH);
+  digitalWrite(SEG_E, HIGH);
+  digitalWrite(SEG_F, HIGH);
+  digitalWrite(SEG_G, HIGH);
+  digitalWrite(SEG_DP, LOW);
+}
+void NUMBER_5()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_B, LOW);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, HIGH);
+  digitalWrite(SEG_E, LOW);
+  digitalWrite(SEG_F, HIGH);
+  digitalWrite(SEG_G, HIGH);
+  digitalWrite(SEG_DP, LOW);
+}
+void NUMBER_4()
+{
+  digitalWrite(SEG_A, LOW);
+  digitalWrite(SEG_B, HIGH);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, LOW);
+  digitalWrite(SEG_E, LOW);
+  digitalWrite(SEG_F, HIGH);
+  digitalWrite(SEG_G, HIGH);
+  digitalWrite(SEG_DP, LOW);
+}
+void NUMBER_3()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_B, HIGH);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, HIGH);
+  digitalWrite(SEG_E, LOW);
+  digitalWrite(SEG_F, LOW);
+  digitalWrite(SEG_G, HIGH);
+  digitalWrite(SEG_DP, LOW);
+}
+void NUMBER_2()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_B, HIGH);
+  digitalWrite(SEG_C, LOW);
+  digitalWrite(SEG_D, HIGH);
+  digitalWrite(SEG_E, HIGH);
+  digitalWrite(SEG_F, LOW);
+  digitalWrite(SEG_G, HIGH);
+  digitalWrite(SEG_DP, LOW);
+}
+void NUMBER_1()
+{
+  digitalWrite(SEG_A, LOW);
+  digitalWrite(SEG_B, HIGH);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, LOW);
+  digitalWrite(SEG_E, LOW);
+  digitalWrite(SEG_F, LOW);
+  digitalWrite(SEG_G, LOW);
+  digitalWrite(SEG_DP, LOW);
+}
+void LETTER_F()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_F, HIGH);
+  digitalWrite(SEG_E, HIGH);
+  digitalWrite(SEG_G, HIGH);
+  digitalWrite(SEG_B, LOW);
+  digitalWrite(SEG_C, LOW);
+  digitalWrite(SEG_D, LOW);
+  digitalWrite(SEG_DP, LOW);
+}
 
+void LETTER_N()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_B, HIGH);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, LOW);
+  digitalWrite(SEG_E, HIGH);
+  digitalWrite(SEG_F, HIGH);
+  digitalWrite(SEG_G, LOW);
+  digitalWrite(SEG_DP, LOW);
+}
 
-  void Numero_7(){
-    PCF.write(4, HIGH);//Alue A
-    PCF.write(5, HIGH);//Alue B
-    PCF.write(6, HIGH);//Alue C
+void LETTER_A()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_B, HIGH);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, LOW);
+  digitalWrite(SEG_E, HIGH);
+  digitalWrite(SEG_F, HIGH);
+  digitalWrite(SEG_G, HIGH);
+  digitalWrite(SEG_DP, LOW);
+}
+void LETTER_I_DP()
+{
+  digitalWrite(SEG_A, LOW);
+  digitalWrite(SEG_F, LOW);
+  digitalWrite(SEG_E, LOW);
+  digitalWrite(SEG_G, LOW);
+  digitalWrite(SEG_B, HIGH);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, LOW);
+  digitalWrite(SEG_DP, HIGH);
+}
+
+void LETTER_BLANK()
+{
+  digitalWrite(SEG_A, LOW);
+  digitalWrite(SEG_F, LOW);
+  digitalWrite(SEG_E, LOW);
+  digitalWrite(SEG_G, LOW);
+  digitalWrite(SEG_B, LOW);
+  digitalWrite(SEG_C, LOW);
+  digitalWrite(SEG_D, LOW);
+  digitalWrite(SEG_DP, LOW);
+}
+void shownumber(uint8_t number)
+{
+  switch (number)
+  {
+    case 1:
+      NUMBER_1();
+      break;
+    case 2:
+      NUMBER_2();
+      break;
+    case 3:
+      NUMBER_3();
+      break;
+    case 4:
+      NUMBER_4();
+      break;
+    case 5:
+      NUMBER_5();
+      break;
+    case 6:
+      NUMBER_6();
+      break;
+    case 7:
+      NUMBER_7();
+      break;
+    case 8:
+      NUMBER_8();
+      break;
+    case 9:
+      NUMBER_9();
+      break;
+    case 0:
+      NUMBER_0();
+      break;
   }
+}
 
-  void Paikka_1(){
-    PCF.write(0, LOW);//Paikka 1 enable signal
-    PCF.write(1, HIGH);//Paikka 2 enable singal
-    PCF.write(2, HIGH);//Paikka 3 enable signal
-    PCF.write(3, HIGH);//Paikka 4 enable signal
+void segment_display()
+{
+  uint8_t animation_number = animation + 1;
+  if (BRIGHTNESS_MODIFY)
+  {
+    delay(1);
+    LETTER_BLANK();
+    return;
   }
-
-  void Paikka_2(){
-    PCF.write(0, HIGH);//Paikka 1 enable signal
-    PCF.write(1, LOW);//Paikka 2 enable singal
-    PCF.write(2, HIGH);//Paikka 3 enable signal
-    PCF.write(3, HIGH);//Paikka 4 enable signal
+  if ((animation_number < 999) && (animation_number > 99))
+  {
+    activate_dig(1);
+    shownumber(animation_number % 10);
+    delay(1);
+    LETTER_BLANK();
+    delay(1);
+    activate_dig(2);
+    shownumber(animation_number / 10 % 10);
+    delay(1);
+    LETTER_BLANK();
+    delay(1);
+    activate_dig(3);
+    shownumber(animation_number / 100 % 10);
+    delay(1);
+    LETTER_BLANK();
+    delay(1);
+    return;
   }
-
-  void Paikka_3(){
-    PCF.write(0, HIGH);//Paikka 1 enable signal
-    PCF.write(1, HIGH);//Paikka 2 enable singal
-    PCF.write(2, LOW);//Paikka 3 enable signal
-    PCF.write(3, HIGH);//Paikka 4 enable signal
+  if ((animation_number < 99) && (animation_number > 9))
+  {
+    activate_dig(1);
+    shownumber(animation_number % 10);
+    delay(1);
+    LETTER_BLANK();
+    delay(1);
+    activate_dig(2);
+    shownumber(animation_number / 10 % 10);
+    delay(1);
+    LETTER_BLANK();
+    delay(1);
+    return;
   }
-
-  void Paikka_4(){
-    PCF.write(0, HIGH);//Paikka 1 enable signal
-    PCF.write(1, HIGH);//Paikka 2 enable singal
-    PCF.write(2, HIGH);//Paikka 3 enable signal
-    PCF.write(3, LOW);//Paikka 4 enable signal
-  }
+  activate_dig(1);
+  shownumber(animation_number);
+  delay(1);
+  LETTER_BLANK();
+  delay(1);
+}
