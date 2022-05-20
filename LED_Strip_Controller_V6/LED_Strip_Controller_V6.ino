@@ -446,8 +446,8 @@ void Rainbow_Palette()
 {
   currentPalette = RainbowColors_p;
   currentBlending = LINEARBLEND;
-  Palette_filler(base_index,6);
-  base_cycle(2);
+  Palette_filler(base_index, 6);
+  base_cycle(10);
 } // Rainbow_Palette()
 
 void Star_Night_Animation()
@@ -591,45 +591,51 @@ void Ocean_Wave()
   { //9948
     leds[i] = ColorFromPalette(palette, base_index + (i * 2), 255, currentBlending);
   }
-  base_cycle(25);
+  base_cycle(30);
 
 } // Ocean_Wave()
 
-void Palette_filler(uint8_t colorIndex,uint8_t speed_value)
+void Palette_filler(uint8_t colorIndex, uint8_t speed_value)
 {
   //Fills the leds with palette instead of pattern function
-
-  for (int i = 0; i < LED_COUNT; ++i)
-  {
-    leds[i] = ColorFromPalette(currentPalette, colorIndex, brightness, currentBlending);
-    colorIndex += speed_value;
+  if (Reverse_Direction) {
+    for (int i = LED_COUNT; i > 0 ; --i)
+    {
+      leds[i] = ColorFromPalette(currentPalette, colorIndex, brightness, currentBlending);
+      colorIndex -= speed_value;
+    }
+  } else {
+    for (int i = 0; i < LED_COUNT; ++i)
+    {
+      leds[i] = ColorFromPalette(currentPalette, colorIndex, brightness, currentBlending);
+      colorIndex += speed_value;
+    }
   }
+
 } //Palette Filler
 
-void Rainbow_Stripe_Palette()
+void Party_Palette()
 {
-  //Red white and blue colors
-  currentPalette = RainbowStripeColors_p;
+  currentPalette = PartyColors_p;
   currentBlending = LINEARBLEND;
-  Palette_filler(base_index,3);
-  base_cycle(25);
-} //Red Whit Blue palette
+  Palette_filler(base_index, 5);
+  base_cycle(10);
+}
 
-void Palette_PG()
+void Navy_Magenta_Palette()
 {
-  //purple and green colors
-  CRGB purple = CHSV(HUE_PURPLE, 255, 255);
-  CRGB green = CHSV(HUE_GREEN, 255, 255);
-  CRGB black = CRGB::Black;
+  //navy blue and magenta
+  CRGB navysininen = CRGB::Navy;
+  CRGB magenta = CRGB::Magenta;
 
   currentPalette = CRGBPalette16(
-                     green, green, green, black,
-                     purple, purple, purple, black,
-                     green, green, green, black,
-                     purple, purple, purple, black);
+                     navysininen, navysininen, navysininen, magenta,
+                     magenta, magenta, navysininen, navysininen,
+                     navysininen, magenta, magenta, magenta,
+                     navysininen, navysininen, navysininen, magenta);
   currentBlending = LINEARBLEND;
-  Palette_filler(base_index,3);
-  base_cycle(25);
+  Palette_filler(base_index, 3);
+  base_cycle(30);
 } //Purple and Green palette
 
 
@@ -646,7 +652,7 @@ void Palette_RP()
                      purple, blue, blue, purple,
                      red, red, purple, blue);
   currentBlending = LINEARBLEND;
-  Palette_filler(base_index,3);
+  Palette_filler(base_index, 3);
   base_cycle(25);
 } //Purple, Blue and Red palette
 
@@ -667,13 +673,17 @@ void rainbow_ish()
   uint16_t brightnessthetainc16 = beatsin88(203, (25 * 256), (40 * 256));
   uint8_t msmultiplier = beatsin88(147, 23, 60);
 
-  uint16_t hue16 = sHue16; //base_index * 256;
+  uint16_t hue16 = base_index * 256;//sHue16;
   uint16_t hueinc16 = beatsin88(113, 1, 3000);
 
   uint16_t ms = millis();
   uint16_t deltams = ms - sLastMillis;
   sLastMillis = ms;
-  sPseudotime += deltams * msmultiplier;
+  if (Reverse_Direction) {
+    sPseudotime -= deltams * msmultiplier;
+  } else {
+    sPseudotime += deltams * msmultiplier;
+  }
   sHue16 += deltams * beatsin88(400, 5, 9);
   uint16_t brightnesstheta16 = sPseudotime;
 
@@ -720,7 +730,7 @@ void Animation_Tick()
       Random_Palette_Crossfade();
       break;
     case 5:
-      Palette_PG();
+      Navy_Magenta_Palette();
       break;
     case 6:
       Running_Stripes();
@@ -732,7 +742,7 @@ void Animation_Tick()
       rainbow_ish();
       break;
     case 9:
-      Rainbow_Stripe_Palette();
+      Party_Palette();
       break;
     case 10:
       Palette_RP();
