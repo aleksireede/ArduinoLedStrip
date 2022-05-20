@@ -386,12 +386,16 @@ void ChangeMe()
 
 void two_sin()
 {
-
-  thisdir ? thisphase += beatsin8(thisspeed, 2, 10) : thisphase -= beatsin8(thisspeed, 2, 10);
-  thatdir ? thatphase += beatsin8(thisspeed, 2, 10) : thatphase -= beatsin8(thatspeed, 2, 10);
+  if (Reverse_Direction)
+  {
+    thisdir ? thisphase += beatsin8(thisspeed, 2, 10) : thisphase += beatsin8(thisspeed, 2, 10);
+    thatdir ? thatphase += beatsin8(thisspeed, 2, 10) : thatphase += beatsin8(thatspeed, 2, 10);
+  } else {
+    thisdir ? thisphase += beatsin8(thisspeed, 2, 10) : thisphase -= beatsin8(thisspeed, 2, 10);
+    thatdir ? thatphase += beatsin8(thisspeed, 2, 10) : thatphase -= beatsin8(thatspeed, 2, 10);
+  }
   thishue += thisrot; // Hue rotation is fun for thisSpeedy_Wave.
   thathue += thatrot; // It's also fun for thatSpeedy_Wave.
-
   for (int k = 0; k < LED_COUNT - 1; k++)
   {
     int thisbright = qsuba(cubicwave8((k * allfreq) + thisphase), thiscutoff);       // qsub sets a minimum value called thiscutoff. If < thiscutoff, then bright = 0. Otherwise, bright = 128 (as defined in qsub)..
@@ -438,17 +442,13 @@ void resetvars()
 
 } // resetvars()
 
-void Sine_Rainbow(uint8_t thisdelay, uint8_t deltahue)
-{ // The fill_rainbow call doesn't support brightness levels.
-
-  //uint8_t thishue = millis()*(255-thisdelay)/255;             // To change the rate, add a beat or something to the result. 'thisdelay' must be a fixed value.
-
-  thishue = beat8(50); // This uses a FastLED sawtooth generator. Again, the '50' should not change on the fly.(beatsin8(50,0, 255) +)
-  //thishue = beatsin8(50,0,255);                              // This can change speeds on the fly. You can also add these to each other.
-
-  fill_rainbow(leds, LED_COUNT, thishue, deltahue); // Use FastLED's fill_rainbow routine.
-
-} // Sine_Rainbow()
+void Rainbow_Palette()
+{
+  currentPalette = RainbowColors_p;
+  currentBlending = LINEARBLEND;
+  Palette_filler(base_index,6);
+  base_cycle(2);
+} // Rainbow_Palette()
 
 void Star_Night_Animation()
 {
@@ -591,18 +591,18 @@ void Ocean_Wave()
   { //9948
     leds[i] = ColorFromPalette(palette, base_index + (i * 2), 255, currentBlending);
   }
-  base_cycle();
+  base_cycle(25);
 
 } // Ocean_Wave()
 
-void Palette_filler(uint8_t colorIndex)
+void Palette_filler(uint8_t colorIndex,uint8_t speed_value)
 {
   //Fills the leds with palette instead of pattern function
 
   for (int i = 0; i < LED_COUNT; ++i)
   {
     leds[i] = ColorFromPalette(currentPalette, colorIndex, brightness, currentBlending);
-    colorIndex += 3;
+    colorIndex += speed_value;
   }
 } //Palette Filler
 
@@ -611,8 +611,8 @@ void Rainbow_Stripe_Palette()
   //Red white and blue colors
   currentPalette = RainbowStripeColors_p;
   currentBlending = LINEARBLEND;
-  Palette_filler(base_index);
-  base_cycle();
+  Palette_filler(base_index,3);
+  base_cycle(25);
 } //Red Whit Blue palette
 
 void Palette_PG()
@@ -628,8 +628,8 @@ void Palette_PG()
                      green, green, green, black,
                      purple, purple, purple, black);
   currentBlending = LINEARBLEND;
-  Palette_filler(base_index);
-  base_cycle();
+  Palette_filler(base_index,3);
+  base_cycle(25);
 } //Purple and Green palette
 
 
@@ -646,14 +646,14 @@ void Palette_RP()
                      purple, blue, blue, purple,
                      red, red, purple, blue);
   currentBlending = LINEARBLEND;
-  Palette_filler(base_index);
-  base_cycle();
+  Palette_filler(base_index,3);
+  base_cycle(25);
 } //Purple, Blue and Red palette
 
 void solid_rainbow()
 {
   fill_solid(leds, LED_COUNT, CHSV(cos8(base_index), 255, 255));
-  base_cycle();
+  base_cycle(25);
 } //solid rainbow
 
 void rainbow_ish()
@@ -696,7 +696,7 @@ void rainbow_ish()
 
     nblend(leds[pixelnumber], newcolor, 64);
   }
-  base_cycle();
+  base_cycle(25);
 } //Rainbow-ish
 
 void Animation_Tick()
@@ -711,7 +711,7 @@ void Animation_Tick()
       Sine_Wave_V2();
       break;
     case 2:
-      Sine_Rainbow(200, 10);
+      Rainbow_Palette();
       break;
     case 3:
       Star_Night();
@@ -853,17 +853,17 @@ void EEPROM_read()
   EEPROM.get(brightness_mem_address, brightness);
 }
 
-void base_cycle()
+void base_cycle(uint8_t fastness)
 {
   if (Reverse_Direction)
   {
-    EVERY_N_MILLISECONDS(25)
+    EVERY_N_MILLISECONDS(fastness)
     { // Speed that effects almost all animations
       base_index--;
     }
     return;
   }
-  EVERY_N_MILLISECONDS(25)
+  EVERY_N_MILLISECONDS(fastness)
   { // Speed that effects almost all animations
     base_index++;
   }
