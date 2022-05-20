@@ -19,9 +19,8 @@ uint8_t min_brightness = 100;
 #define S2_pin A5 // PUN
 uint8_t button_delay = 0;
 #define S3_pin_no 12
-#define S3_pin_nc 13
-long previousMillis = 0;
-long off_interval = 15000;
+long previousMillis = 0; // used for counting seconds
+long off_interval = 15000; // 15 second delay when pressing the off button before the off text fades
 // End Button
 
 // 7-segment display 4-digit
@@ -51,6 +50,7 @@ TBlendType currentBlending;           // NOBLEND or LINEARBLEND
 bool ON_OFF_STATE = true;
 bool BRIGHTNESS_MODIFY = false;
 bool BRIGHTNESS_MODIFY_check = false;
+bool Reverse_Direction = false;
 // End MISC
 
 // Sine V1 variables
@@ -144,6 +144,7 @@ void setup()
   S3.setClickTicks(250); // delay differentiating single clocks from double clicks
   S3.attachClick(ON_OFF_Press);// attach normal press to ON_OFF_BUTTON
   S3.attachDoubleClick(WRITE_TO_EEPROM); // write current animation to memory
+  S3.attachLongPressStart(Change_Direction); //change direction of the led strip
 
   pinMode(SEG_A, OUTPUT);
   pinMode(SEG_B, OUTPUT);
@@ -216,6 +217,11 @@ void S2_long_press()
   {
     higher_brightness();
   }
+}
+
+void Change_Direction()
+{
+  Reverse_Direction = !Reverse_Direction;
 }
 
 void S1_long_press()
@@ -849,6 +855,14 @@ void EEPROM_read()
 
 void base_cycle()
 {
+  if (Reverse_Direction)
+  {
+    EVERY_N_MILLISECONDS(25)
+    { // Speed that effects almost all animations
+      base_index--;
+    }
+    return;
+  }
   EVERY_N_MILLISECONDS(25)
   { // Speed that effects almost all animations
     base_index++;
@@ -879,107 +893,39 @@ void higher_brightness()
 void Brightness_Check()
 {
   uint8_t brightness_number = brightness - 100;
+  if ((brightness_number < 9999) && (brightness_number > 999))
+  {
+    display_segment(1, brightness_number % 10); // display brightness number on segment 1
+    display_segment(2, brightness_number / 10 % 10); // display brightness number on segment 2
+    display_segment(3, brightness_number / 100 % 10); // display brightness number on segment 3
+    display_segment(4, brightness_number / 1000 % 10); // display brightness number on segment 4
+    return;
+  }
   if ((brightness_number < 999) && (brightness_number > 99))
   {
-    activate_dig(1);
-    shownumber(brightness_number % 10);
-    delay(1);
-    LETTER_BLANK();
-    delay(1);
-    activate_dig(2);
-    shownumber(brightness_number / 10 % 10);
-    delay(1);
-    LETTER_BLANK();
-    delay(1);
-    activate_dig(3);
-    shownumber(brightness_number / 100 % 10);
-    delay(1);
-    LETTER_BLANK();
-    delay(1);
+    display_segment(1, brightness_number % 10); // display brightness number on segment 1
+    display_segment(2, brightness_number / 10 % 10); // display brightness number on segment 2
+    display_segment(3, brightness_number / 100 % 10); // display brightness number on segment 3
     return;
   }
   if ((brightness_number < 99) && (brightness_number > 9))
   {
-    activate_dig(1);
-    shownumber(brightness_number % 10);
-    delay(1);
-    LETTER_BLANK();
-    delay(1);
-    activate_dig(2);
-    shownumber(brightness_number / 10 % 10);
-    delay(1);
-    LETTER_BLANK();
-    delay(1);
+    display_segment(1, brightness_number % 10); // display brightness number on segment 1
+    display_segment(2, brightness_number / 10 % 10); // display brightness number on segment 2
     return;
   }
-  activate_dig(1);
-  shownumber(brightness_number);
-  delay(1);
-  LETTER_BLANK();
-  delay(1);
+  display_segment(1, brightness_number); // display brightness number on segment 1
 }
-void activate_dig(uint8_t dig)
-{
-  switch (dig)
-  {
-    case 1:
-      digitalWrite(DIG_1, LOW);
-      digitalWrite(DIG_2, HIGH);
-      digitalWrite(DIG_3, HIGH);
-      digitalWrite(DIG_4, HIGH);
-      break;
-    case 2:
-      digitalWrite(DIG_1, HIGH);
-      digitalWrite(DIG_2, LOW);
-      digitalWrite(DIG_3, HIGH);
-      digitalWrite(DIG_4, HIGH);
-      break;
-    case 3:
-      digitalWrite(DIG_1, HIGH);
-      digitalWrite(DIG_2, HIGH);
-      digitalWrite(DIG_3, LOW);
-      digitalWrite(DIG_4, HIGH);
-      break;
-    case 4:
-      digitalWrite(DIG_1, HIGH);
-      digitalWrite(DIG_2, HIGH);
-      digitalWrite(DIG_3, HIGH);
-      digitalWrite(DIG_4, LOW);
-      break;
-    case 5:
-      digitalWrite(DIG_1, HIGH);
-      digitalWrite(DIG_2, HIGH);
-      digitalWrite(DIG_3, HIGH);
-      digitalWrite(DIG_4, HIGH);
-      break;
-  }
-}
+
 void SEG_SHOW_OFF()
 {
-  Serial.println(millis());
-  Serial.println(millis() - previousMillis);
   if (millis() - previousMillis > off_interval) {
-    activate_dig(5);
     LETTER_BLANK();
     return;
   }
-  LETTER_BLANK();
-  delay(1);
-  activate_dig(3);
-  NUMBER_0();
-  delay(1);
-  LETTER_BLANK();
-  delay(1);
-  activate_dig(2);
-  LETTER_F();
-  delay(1);
-  LETTER_BLANK();
-  delay(1);
-  activate_dig(1);
-  LETTER_F();
-  delay(1);
-  LETTER_BLANK();
-  delay(1);
+  display_segment(3, 0); // display number 0 on segment 3
+  display_segment(2, 15); // display letter f on segment 2
+  display_segment(1, 15); // display letter f on segment 1
 }
 
 void NUMBER_0()
@@ -1142,16 +1088,80 @@ void LETTER_I_DP()
 void LETTER_BLANK()
 {
   digitalWrite(SEG_A, LOW);
-  digitalWrite(SEG_F, LOW);
-  digitalWrite(SEG_E, LOW);
-  digitalWrite(SEG_G, LOW);
   digitalWrite(SEG_B, LOW);
   digitalWrite(SEG_C, LOW);
   digitalWrite(SEG_D, LOW);
+  digitalWrite(SEG_E, LOW);
+  digitalWrite(SEG_F, LOW);
+  digitalWrite(SEG_G, LOW);
   digitalWrite(SEG_DP, LOW);
 }
-void shownumber(uint8_t number)
+
+void LETTER_J()
 {
+  digitalWrite(SEG_A, LOW);
+  digitalWrite(SEG_B, HIGH);
+  digitalWrite(SEG_C, HIGH);
+  digitalWrite(SEG_D, HIGH);
+  digitalWrite(SEG_E, LOW);
+  digitalWrite(SEG_F, LOW);
+  digitalWrite(SEG_G, LOW);
+  digitalWrite(SEG_DP, LOW);
+}
+
+void LETTER_C()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_B, LOW);
+  digitalWrite(SEG_C, LOW);
+  digitalWrite(SEG_D, HIGH);
+  digitalWrite(SEG_E, HIGH);
+  digitalWrite(SEG_F, HIGH);
+  digitalWrite(SEG_G, LOW);
+  digitalWrite(SEG_DP, LOW);
+}
+
+void LETTER_E()
+{
+  digitalWrite(SEG_A, HIGH);
+  digitalWrite(SEG_B, LOW);
+  digitalWrite(SEG_C, LOW);
+  digitalWrite(SEG_D, HIGH);
+  digitalWrite(SEG_E, HIGH);
+  digitalWrite(SEG_F, HIGH);
+  digitalWrite(SEG_G, HIGH);
+  digitalWrite(SEG_DP, LOW);
+}
+
+void display_segment(uint8_t dig, uint8_t number)
+{
+  switch (dig)
+  {
+    case 1:
+      digitalWrite(DIG_1, LOW);
+      digitalWrite(DIG_2, HIGH);
+      digitalWrite(DIG_3, HIGH);
+      digitalWrite(DIG_4, HIGH);
+      break;
+    case 2:
+      digitalWrite(DIG_1, HIGH);
+      digitalWrite(DIG_2, LOW);
+      digitalWrite(DIG_3, HIGH);
+      digitalWrite(DIG_4, HIGH);
+      break;
+    case 3:
+      digitalWrite(DIG_1, HIGH);
+      digitalWrite(DIG_2, HIGH);
+      digitalWrite(DIG_3, LOW);
+      digitalWrite(DIG_4, HIGH);
+      break;
+    case 4:
+      digitalWrite(DIG_1, HIGH);
+      digitalWrite(DIG_2, HIGH);
+      digitalWrite(DIG_3, HIGH);
+      digitalWrite(DIG_4, LOW);
+      break;
+  }
   switch (number)
   {
     case 1:
@@ -1184,8 +1194,29 @@ void shownumber(uint8_t number)
     case 0:
       NUMBER_0();
       break;
+    case 10:
+      LETTER_A();
+      break;
+    case 11:
+      NUMBER_8();
+      break;
+    case 12:
+      LETTER_C();
+      break;
+    case 13:
+      NUMBER_0();
+      break;
+    case 14:
+      LETTER_E();
+      break;
+    case 15:
+      LETTER_F();
+      break;
   }
-}
+  delay(1);
+  LETTER_BLANK();
+  delay(1);
+} // End segment display
 
 void segment_display()
 {
@@ -1196,42 +1227,26 @@ void segment_display()
     LETTER_BLANK();
     return;
   }
+  if ((animation_number < 9999) && (animation_number > 999))
+  {
+    display_segment(1, animation_number % 10); // display animation number on segment 1
+    display_segment(2, animation_number / 10 % 10); // display animation number on segment 2
+    display_segment(3, animation_number / 100 % 10); // display animation number on segment 3
+    display_segment(4, animation_number / 1000 % 10); // display animation number on segment 4
+    return;
+  }
   if ((animation_number < 999) && (animation_number > 99))
   {
-    activate_dig(1);
-    shownumber(animation_number % 10);
-    delay(1);
-    LETTER_BLANK();
-    delay(1);
-    activate_dig(2);
-    shownumber(animation_number / 10 % 10);
-    delay(1);
-    LETTER_BLANK();
-    delay(1);
-    activate_dig(3);
-    shownumber(animation_number / 100 % 10);
-    delay(1);
-    LETTER_BLANK();
-    delay(1);
+    display_segment(1, animation_number % 10); // display animation number on segment 1
+    display_segment(2, animation_number / 10 % 10); // display animation number on segment 2
+    display_segment(3, animation_number / 100 % 10); // display animation number on segment 3
     return;
   }
   if ((animation_number < 99) && (animation_number > 9))
   {
-    activate_dig(1);
-    shownumber(animation_number % 10);
-    delay(1);
-    LETTER_BLANK();
-    delay(1);
-    activate_dig(2);
-    shownumber(animation_number / 10 % 10);
-    delay(1);
-    LETTER_BLANK();
-    delay(1);
+    display_segment(1, animation_number % 10); // display animation number on segment 1
+    display_segment(2, animation_number / 10 % 10); // display animation number on segment 2
     return;
   }
-  activate_dig(1);
-  shownumber(animation_number);
-  delay(1);
-  LETTER_BLANK();
-  delay(1);
+  display_segment(1, animation_number); // display animation number on segment 1
 }
