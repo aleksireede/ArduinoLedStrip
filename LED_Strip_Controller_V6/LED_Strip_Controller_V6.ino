@@ -42,8 +42,6 @@ long off_interval = 15000; // 15 second delay when pressing the off button befor
 bool save_on_shutdown = false;        // save values to rom on "shutdown" when leds go black
 uint8_t base_index = 0;               // Rotating index value used by many animations
 uint8_t base_speed = 0;               // base speed of all animations
-uint8_t animation = 0;                // Initialize current animation
-uint8_t animation_count = 11;         // Count animations (Used by button counter to prevent overflow)
 uint8_t animation_mem_address = 0;    // Location we want the data to be put.
 uint8_t brightness_mem_address = 4;   // Location of brightness on eeprom
 TBlendType currentBlending;           // NOBLEND or LINEARBLEND
@@ -51,6 +49,7 @@ bool ON_OFF_STATE = true;
 bool BRIGHTNESS_MODIFY = false;
 bool BRIGHTNESS_MODIFY_check = false;
 bool Reverse_Direction = false;
+bool warning1 = false; // Warning if direction is unchangeable. decimal point of first digit is lit up
 // End MISC
 
 // Sine V1 variables
@@ -174,6 +173,10 @@ void setup()
 }
 //End Setup
 
+// List of patterns to cycle through.  Each is defined as a separate function below.
+typedef void (*SimplePatternList[])();
+SimplePatternList gPatterns = { solid_rainbow, Sine_Wave_V2, Rainbow_Palette, Star_Night, Random_Palette_Crossfade, Navy_Magenta_Palette, Running_Stripes, Ocean_Wave, rainbow_ish, Party_Palette, Palette_RP };
+uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
 
 void loop()
 {
@@ -185,8 +188,9 @@ void loop()
     SEG_SHOW_OFF();
     return; // exit and run loop() again
   }
+  gPatterns[gCurrentPatternNumber]();
   previousMillis = millis();
-  Animation_Tick();
+  segment_display();
   S1.tick(); // check status of button 1
   S2.tick(); // Check status of button 2
   S3.tick(); // Check status of button 3
@@ -202,12 +206,15 @@ void loop()
 }
 //End Loop
 
+#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
+
 void S1_Press()
 {
   EVERY_N_MILLISECONDS(button_delay)
   {
     previousanimation();
   }
+  warning1 = false;
 }
 
 void S2_long_press()
@@ -243,6 +250,7 @@ void S2_Press()
   {
     nextanimation();
   }
+  warning1 = false;
 }
 
 void WRITE_TO_EEPROM()
@@ -272,23 +280,18 @@ void S1_long_press_stop()
 void previousanimation()
 {
   Flash_Red();
-  if (animation > 0)
+  if (gCurrentPatternNumber == 0)
   {
-    animation -= 1;
-    return; // exit when condition met and go to previous function
+    gCurrentPatternNumber = (sizeof( gPatterns) / 2) - 1;
+    return;
   }
-  animation = animation_count - 1;
+  gCurrentPatternNumber = (gCurrentPatternNumber - 1) % ARRAY_SIZE( gPatterns);
 } //End Prevcious animation
 
 void nextanimation()
 {
   Flash_Green();
-  if (animation < animation_count - 1)
-  {
-    animation += 1;
-    return; // exit when condition met and go to previous function
-  }
-  animation = 0;
+  gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE( gPatterns);
 }
 //End Next Animation
 
@@ -452,7 +455,7 @@ void Rainbow_Palette()
 
 void Star_Night_Animation()
 {
-
+  warning1 = true;
   EVERY_N_SECONDS(5)
   {
     uint8_t baseC = random8();
@@ -549,6 +552,7 @@ void ChangePalettePeriodically()
 
 void Random_Palette_Crossfade()
 {
+  warning1 = true;
   ChangePalettePeriodically();
 
   EVERY_N_MILLISECONDS(100)
@@ -567,7 +571,7 @@ void Random_Palette_Crossfade()
 
 void Running_Stripes()
 { // Eight colored dots, weaving in and out of sync with each other.
-
+  warning1 = true;
   fadeToBlackBy(leds, LED_COUNT, 20);
   byte dothue = 0;
 
@@ -709,48 +713,6 @@ void rainbow_ish()
   base_cycle(25);
 } //Rainbow-ish
 
-void Animation_Tick()
-{
-  segment_display();
-  switch (animation)
-  {
-    case 0:
-      solid_rainbow();
-      break;
-    case 1:
-      Sine_Wave_V2();
-      break;
-    case 2:
-      Rainbow_Palette();
-      break;
-    case 3:
-      Star_Night();
-      break;
-    case 4:
-      Random_Palette_Crossfade();
-      break;
-    case 5:
-      Navy_Magenta_Palette();
-      break;
-    case 6:
-      Running_Stripes();
-      break;
-    case 7:
-      Ocean_Wave();
-      break;
-    case 8:
-      rainbow_ish();
-      break;
-    case 9:
-      Party_Palette();
-      break;
-    case 10:
-      Palette_RP();
-      break;
-  }
-}
-//End Animation Tick
-
 void Flash_Yellow()
 {
   FastLED.setBrightness(25);
@@ -852,14 +814,14 @@ void Solid_Yellow_With_Delay()
 
 void EEPROM_write()
 {
-  EEPROM.put(animation_mem_address, animation);
+  EEPROM.put(animation_mem_address, gCurrentPatternNumber);
   EEPROM.put(brightness_mem_address, brightness);
   Flash_Yellow();
 }
 
 void EEPROM_read()
 {
-  EEPROM.get(animation_mem_address, animation);
+  EEPROM.get(animation_mem_address, gCurrentPatternNumber);
   EEPROM.get(brightness_mem_address, brightness);
 }
 
@@ -930,7 +892,7 @@ void Brightness_Check()
 void SEG_SHOW_OFF()
 {
   if (millis() - previousMillis > off_interval) {
-    LETTER_BLANK();
+    segment_activate(0, 0, 0, 0, 0, 0, 0, 0);
     return;
   }
   display_segment(3, 0); // display number 0 on segment 3
@@ -938,325 +900,144 @@ void SEG_SHOW_OFF()
   display_segment(1, 15); // display letter f on segment 1
 }
 
-void NUMBER_0()
-{
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_B, HIGH);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, HIGH);
-  digitalWrite(SEG_E, HIGH);
-  digitalWrite(SEG_F, HIGH);
-  digitalWrite(SEG_G, LOW);
-  digitalWrite(SEG_DP, LOW);
-}
-void NUMBER_8()
-{
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_B, HIGH);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, HIGH);
-  digitalWrite(SEG_E, HIGH);
-  digitalWrite(SEG_F, HIGH);
-  digitalWrite(SEG_G, HIGH);
-  digitalWrite(SEG_DP, LOW);
-}
-void NUMBER_9()
-{
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_B, HIGH);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, HIGH);
-  digitalWrite(SEG_E, LOW);
-  digitalWrite(SEG_F, HIGH);
-  digitalWrite(SEG_G, HIGH);
-  digitalWrite(SEG_DP, LOW);
-}
-void NUMBER_7()
-{
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_B, HIGH);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, LOW);
-  digitalWrite(SEG_E, LOW);
-  digitalWrite(SEG_F, LOW);
-  digitalWrite(SEG_G, LOW);
-  digitalWrite(SEG_DP, LOW);
-}
-void NUMBER_6()
-{
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_B, LOW);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, HIGH);
-  digitalWrite(SEG_E, HIGH);
-  digitalWrite(SEG_F, HIGH);
-  digitalWrite(SEG_G, HIGH);
-  digitalWrite(SEG_DP, LOW);
-}
-void NUMBER_5()
-{
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_B, LOW);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, HIGH);
-  digitalWrite(SEG_E, LOW);
-  digitalWrite(SEG_F, HIGH);
-  digitalWrite(SEG_G, HIGH);
-  digitalWrite(SEG_DP, LOW);
-}
-void NUMBER_4()
-{
-  digitalWrite(SEG_A, LOW);
-  digitalWrite(SEG_B, HIGH);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, LOW);
-  digitalWrite(SEG_E, LOW);
-  digitalWrite(SEG_F, HIGH);
-  digitalWrite(SEG_G, HIGH);
-  digitalWrite(SEG_DP, LOW);
-}
-void NUMBER_3()
-{
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_B, HIGH);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, HIGH);
-  digitalWrite(SEG_E, LOW);
-  digitalWrite(SEG_F, LOW);
-  digitalWrite(SEG_G, HIGH);
-  digitalWrite(SEG_DP, LOW);
-}
-void NUMBER_2()
-{
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_B, HIGH);
-  digitalWrite(SEG_C, LOW);
-  digitalWrite(SEG_D, HIGH);
-  digitalWrite(SEG_E, HIGH);
-  digitalWrite(SEG_F, LOW);
-  digitalWrite(SEG_G, HIGH);
-  digitalWrite(SEG_DP, LOW);
-}
-void NUMBER_1()
-{
-  digitalWrite(SEG_A, LOW);
-  digitalWrite(SEG_B, HIGH);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, LOW);
-  digitalWrite(SEG_E, LOW);
-  digitalWrite(SEG_F, LOW);
-  digitalWrite(SEG_G, LOW);
-  digitalWrite(SEG_DP, LOW);
-}
-void LETTER_F()
-{
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_F, HIGH);
-  digitalWrite(SEG_E, HIGH);
-  digitalWrite(SEG_G, HIGH);
-  digitalWrite(SEG_B, LOW);
-  digitalWrite(SEG_C, LOW);
-  digitalWrite(SEG_D, LOW);
-  digitalWrite(SEG_DP, LOW);
-}
-
 void LETTER_N()
 {
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_B, HIGH);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, LOW);
-  digitalWrite(SEG_E, HIGH);
-  digitalWrite(SEG_F, HIGH);
-  digitalWrite(SEG_G, LOW);
-  digitalWrite(SEG_DP, LOW);
-}
-
-void LETTER_A()
-{
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_B, HIGH);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, LOW);
-  digitalWrite(SEG_E, HIGH);
-  digitalWrite(SEG_F, HIGH);
-  digitalWrite(SEG_G, HIGH);
-  digitalWrite(SEG_DP, LOW);
+  segment_activate(1, 1, 1, 0, 1, 1, 0, 0);
 }
 void LETTER_I_DP()
 {
-  digitalWrite(SEG_A, LOW);
-  digitalWrite(SEG_F, LOW);
-  digitalWrite(SEG_E, LOW);
-  digitalWrite(SEG_G, LOW);
-  digitalWrite(SEG_B, HIGH);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, LOW);
-  digitalWrite(SEG_DP, HIGH);
+  segment_activate(0, 0, 0, 0, 1, 1, 0, 1);
 }
-
-void LETTER_BLANK()
-{
-  digitalWrite(SEG_A, LOW);
-  digitalWrite(SEG_B, LOW);
-  digitalWrite(SEG_C, LOW);
-  digitalWrite(SEG_D, LOW);
-  digitalWrite(SEG_E, LOW);
-  digitalWrite(SEG_F, LOW);
-  digitalWrite(SEG_G, LOW);
-  digitalWrite(SEG_DP, LOW);
-}
-
 void LETTER_J()
 {
-  digitalWrite(SEG_A, LOW);
-  digitalWrite(SEG_B, HIGH);
-  digitalWrite(SEG_C, HIGH);
-  digitalWrite(SEG_D, HIGH);
-  digitalWrite(SEG_E, LOW);
-  digitalWrite(SEG_F, LOW);
-  digitalWrite(SEG_G, LOW);
-  digitalWrite(SEG_DP, LOW);
+  segment_activate(0, 1, 1, 1, 0, 0, 0, 0);
 }
 
-void LETTER_C()
+void segment_activate(bool A, bool B, bool C, bool D, bool E, bool F, bool G, bool H)
 {
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_B, LOW);
-  digitalWrite(SEG_C, LOW);
-  digitalWrite(SEG_D, HIGH);
-  digitalWrite(SEG_E, HIGH);
-  digitalWrite(SEG_F, HIGH);
-  digitalWrite(SEG_G, LOW);
-  digitalWrite(SEG_DP, LOW);
+  digitalWrite(SEG_A, A);
+  digitalWrite(SEG_B, B);
+  digitalWrite(SEG_C, C);
+  digitalWrite(SEG_D, D);
+  digitalWrite(SEG_E, E);
+  digitalWrite(SEG_F, F);
+  digitalWrite(SEG_G, G);
+  digitalWrite(SEG_DP, H);
 }
-
-void LETTER_E()
+void digit_activate(bool dig1, bool dig2, bool dig3, bool dig4)
 {
-  digitalWrite(SEG_A, HIGH);
-  digitalWrite(SEG_B, LOW);
-  digitalWrite(SEG_C, LOW);
-  digitalWrite(SEG_D, HIGH);
-  digitalWrite(SEG_E, HIGH);
-  digitalWrite(SEG_F, HIGH);
-  digitalWrite(SEG_G, HIGH);
-  digitalWrite(SEG_DP, LOW);
+  digitalWrite(DIG_1, dig1);
+  digitalWrite(DIG_2, dig2);
+  digitalWrite(DIG_3, dig3);
+  digitalWrite(DIG_4, dig4);
 }
 
 void display_segment(uint8_t dig, uint8_t number)
 {
   switch (dig)
   {
-    case 1:
-      digitalWrite(DIG_1, LOW);
-      digitalWrite(DIG_2, HIGH);
-      digitalWrite(DIG_3, HIGH);
-      digitalWrite(DIG_4, HIGH);
+    case 1: // First digit from right
+      digit_activate(0, 1, 1, 1);
       break;
-    case 2:
-      digitalWrite(DIG_1, HIGH);
-      digitalWrite(DIG_2, LOW);
-      digitalWrite(DIG_3, HIGH);
-      digitalWrite(DIG_4, HIGH);
+    case 2: // Second digit from right
+      digit_activate(1, 0, 1, 1);
       break;
-    case 3:
-      digitalWrite(DIG_1, HIGH);
-      digitalWrite(DIG_2, HIGH);
-      digitalWrite(DIG_3, LOW);
-      digitalWrite(DIG_4, HIGH);
+    case 3: // Third digit from right
+      digit_activate(1, 1, 0, 1);
       break;
-    case 4:
-      digitalWrite(DIG_1, HIGH);
-      digitalWrite(DIG_2, HIGH);
-      digitalWrite(DIG_3, HIGH);
-      digitalWrite(DIG_4, LOW);
+    case 4: // Fourth digit from right
+      digit_activate(1, 1, 1, 0);
       break;
   }
   switch (number)
   {
-    case 1:
-      NUMBER_1();
+    case 1: // 1
+      segment_activate(0, 1, 1, 0, 0, 0, 0, 0);
       break;
-    case 2:
-      NUMBER_2();
+    case 2: // 2
+      segment_activate(1, 1, 0, 1, 1, 0, 1, 0);
       break;
-    case 3:
-      NUMBER_3();
+    case 3: // 3
+      segment_activate(1, 1, 1, 1, 0, 0, 1, 0);
       break;
-    case 4:
-      NUMBER_4();
+    case 4: // 4
+      segment_activate(0, 1, 1, 0, 0, 1, 1, 0);
       break;
-    case 5:
-      NUMBER_5();
+    case 5: // 5
+      segment_activate(1, 0, 1, 1, 0, 1, 1, 0);
       break;
-    case 6:
-      NUMBER_6();
+    case 6: // 6
+      segment_activate(1, 0, 1, 1, 1, 1, 1, 0);
       break;
-    case 7:
-      NUMBER_7();
+    case 7: // 7
+      segment_activate(1, 1, 1, 0, 0, 0, 0, 0);
       break;
-    case 8:
-      NUMBER_8();
+    case 8: // 8
+      segment_activate(1, 1, 1, 1, 1, 1, 1, 0);
       break;
-    case 9:
-      NUMBER_9();
+    case 9: // 9
+      segment_activate(1, 1, 1, 1, 0, 1, 1, 0);
       break;
-    case 0:
-      NUMBER_0();
+    case 0: // 0
+      segment_activate(1, 1, 1, 1, 1, 1, 0, 0);
       break;
-    case 10:
-      LETTER_A();
+    case 10: // A
+      segment_activate(1, 1, 1, 0, 1, 1, 1, 0);
       break;
-    case 11:
-      NUMBER_8();
+    case 11: // B
+      segment_activate(1, 1, 1, 1, 1, 1, 1, 0);
       break;
-    case 12:
-      LETTER_C();
+    case 12: // C
+      segment_activate(1, 0, 0, 1, 1, 1, 0, 0);
       break;
-    case 13:
-      NUMBER_0();
+    case 13: // D
+      segment_activate(1, 1, 1, 1, 1, 1, 0, 0);
       break;
-    case 14:
-      LETTER_E();
+    case 14: // E
+      segment_activate(1, 0, 0, 1, 1, 1, 1, 0);
       break;
-    case 15:
-      LETTER_F();
+    case 15: // F
+      segment_activate(1, 0, 0, 0, 1, 1, 1, 0);
       break;
+    case 16: // Decimal point
+      segment_activate(0, 0, 0, 0, 0, 0, 0, 1);
   }
   delay(1);
-  LETTER_BLANK();
+  segment_activate(0, 0, 0, 0, 0, 0, 0, 0);
   delay(1);
 } // End segment display
 
 void segment_display()
 {
-  uint8_t animation_number = animation + 1;
   if (BRIGHTNESS_MODIFY)
   {
     delay(1);
-    LETTER_BLANK();
+    segment_activate(0, 0, 0, 0, 0, 0, 0, 0);
     return;
   }
-  if ((animation_number < 9999) && (animation_number > 999))
+  if (warning1) {
+    display_segment(1, 16);
+  }
+  if ((gCurrentPatternNumber < 9999) && (gCurrentPatternNumber > 999))
   {
-    display_segment(1, animation_number % 10); // display animation number on segment 1
-    display_segment(2, animation_number / 10 % 10); // display animation number on segment 2
-    display_segment(3, animation_number / 100 % 10); // display animation number on segment 3
-    display_segment(4, animation_number / 1000 % 10); // display animation number on segment 4
+    display_segment(1, gCurrentPatternNumber % 10); // display animation number on segment 1
+    display_segment(2, gCurrentPatternNumber / 10 % 10); // display animation number on segment 2
+    display_segment(3, gCurrentPatternNumber / 100 % 10); // display animation number on segment 3
+    display_segment(4, gCurrentPatternNumber / 1000 % 10); // display animation number on segment 4
     return;
   }
-  if ((animation_number < 999) && (animation_number > 99))
+  if ((gCurrentPatternNumber < 999) && (gCurrentPatternNumber > 99))
   {
-    display_segment(1, animation_number % 10); // display animation number on segment 1
-    display_segment(2, animation_number / 10 % 10); // display animation number on segment 2
-    display_segment(3, animation_number / 100 % 10); // display animation number on segment 3
+    display_segment(1, gCurrentPatternNumber % 10); // display animation number on segment 1
+    display_segment(2, gCurrentPatternNumber / 10 % 10); // display animation number on segment 2
+    display_segment(3, gCurrentPatternNumber / 100 % 10); // display animation number on segment 3
     return;
   }
-  if ((animation_number < 99) && (animation_number > 9))
+  if ((gCurrentPatternNumber < 99) && (gCurrentPatternNumber > 9))
   {
-    display_segment(1, animation_number % 10); // display animation number on segment 1
-    display_segment(2, animation_number / 10 % 10); // display animation number on segment 2
+    display_segment(1, gCurrentPatternNumber % 10); // display animation number on segment 1
+    display_segment(2, gCurrentPatternNumber / 10 % 10); // display animation number on segment 2
     return;
   }
-  display_segment(1, animation_number); // display animation number on segment 1
+  display_segment(1, gCurrentPatternNumber); // display animation number on segment 1
 }
