@@ -160,7 +160,7 @@ void setup()
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
-SimplePatternList gPatterns = { solid_rainbow, Sine_Wave_V2, Rainbow_Palette, Star_Night, Random_Palette_Crossfade, Navy_Magenta_Palette, Running_Stripes, Ocean_Wave, rainbow_ish, Party_Palette, Palette_RP };
+SimplePatternList gPatterns = { solid_rainbow, Sine_Wave_V2, Rainbow_Palette, Star_Night, Random_Palette_Crossfade, Navy_Magenta_Palette, Running_Stripes, Ocean_Wave, rainbow_ish, Party_Palette, Palette_RP, test_Palette};
 uint8_t current_animation = 0; // Index number of which pattern is current
 
 void loop()
@@ -267,7 +267,6 @@ void S1_long_press_stop()
 
 void previousanimation()
 {
-  Flash_Red();
   if (current_animation == 0)
   {
     current_animation = (sizeof( gPatterns) / 2) - 1;
@@ -278,7 +277,6 @@ void previousanimation()
 
 void nextanimation()
 {
-  Flash_Green();
   current_animation = (current_animation + 1) % ARRAY_SIZE( gPatterns);
 }
 //End Next Animation
@@ -616,7 +614,7 @@ void Party_Palette()
 
 void Navy_Magenta_Palette()
 {
-  //navy blue and magenta
+  //navy blue and magenta(pink)
   CRGB navysininen = CRGB::Navy;
   CRGB magenta = CRGB::Magenta;
 
@@ -630,6 +628,21 @@ void Navy_Magenta_Palette()
   base_cycle(30);
 } //Purple and Green palette
 
+void test_Palette()
+{
+  //navy blue and magenta(pink)
+  CRGB navysininen = CRGB::Navy;
+  CRGB vih_omena = CRGB( 0, 255, 0);;
+
+  currentPalette = CRGBPalette16(
+                     navysininen, navysininen, navysininen, vih_omena,
+                     vih_omena, vih_omena, navysininen, navysininen,
+                     navysininen, vih_omena, vih_omena, vih_omena,
+                     navysininen, navysininen, vih_omena, vih_omena);
+  currentBlending = LINEARBLEND;
+  Palette_filler(base_index, 3);
+  base_cycle(30);
+} //Purple and Green palette
 
 void Palette_RP()
 {
@@ -712,28 +725,6 @@ void Flash_Yellow()
   FastLED.setBrightness(brightness);
 }
 
-void Flash_Green()
-{
-  FastLED.setBrightness(25);
-  Solid_Black_With_Delay();
-  Solid_Green_With_Delay();
-  Solid_Black_With_Delay();
-  Solid_Green_With_Delay();
-  Solid_Black_With_Delay();
-  FastLED.setBrightness(brightness);
-}
-
-void Flash_Red()
-{
-  FastLED.setBrightness(25);
-  Solid_Black_With_Delay();
-  Solid_Red_With_Delay();
-  Solid_Black_With_Delay();
-  Solid_Red_With_Delay();
-  Solid_Black_With_Delay();
-  FastLED.setBrightness(brightness);
-}
-
 void Startup_Animation()
 {
   forward();
@@ -764,27 +755,6 @@ void backward()
   }
 }
 //End Startup Animation
-
-void Solid_Red_With_Delay()
-{
-  fill_solid(leds, LED_COUNT, CRGB::Red);
-  FastLED.show();
-  delay(75);
-}
-
-void Solid_Green_With_Delay()
-{
-  fill_solid(leds, LED_COUNT, CRGB::Green);
-  FastLED.show();
-  delay(75);
-}
-
-void Solid_Green_With_Long_Delay()
-{
-  fill_solid(leds, LED_COUNT, CRGB::Green);
-  FastLED.show();
-  delay(750);
-}
 
 void Solid_Black_With_Delay()
 {
@@ -817,7 +787,7 @@ void base_cycle(uint8_t fastness)
 {
   if (Reverse_Direction)
   {
-    EVERY_N_MILLISECONDS(fastness)
+    EVERY_N_MILLISECONDS(fastness/2)
     { // Speed that effects almost all animations
       base_index--;
     }
