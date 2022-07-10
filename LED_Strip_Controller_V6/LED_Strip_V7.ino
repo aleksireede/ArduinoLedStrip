@@ -1,6 +1,7 @@
 #include <FastLED.h>
 #include <OneButton.h>
 #include <EEPROM.h>
+#include "LED_segment.h"
 // Inlcude libraries
 
 // Led Strip
@@ -23,21 +24,6 @@ long previousMillis = 0; // used for counting seconds
 long off_interval = 15000; // 15 second delay when pressing the off button before the off text fades
 // End Button
 
-// 7-segment display 4-digit
-#define SEG_A 4
-#define SEG_B 5
-#define SEG_C 6
-#define SEG_D 7
-#define SEG_E 8
-#define SEG_F 9
-#define SEG_G 10
-#define SEG_DP 11
-#define DIG_1 A1
-#define DIG_2 A2
-#define DIG_3 A3
-#define DIG_4 A4
-// END 7-segment display 4-digit
-
 // MISC
 bool save_on_shutdown = false;        // save values to rom on "shutdown" when leds go black
 uint8_t base_index = 0;               // Rotating index value used by many animations
@@ -46,7 +32,6 @@ uint8_t animation_mem_address = 0;    // Location we want the data to be put.
 uint8_t brightness_mem_address = 4;   // Location of brightness on eeprom
 TBlendType currentBlending;           // NOBLEND or LINEARBLEND
 bool ON_OFF_STATE = true;
-bool BRIGHTNESS_MODIFY = false;
 bool BRIGHTNESS_MODIFY_check = false;
 bool Reverse_Direction = false;
 bool warning1 = false; // Warning if direction is unchangeable. decimal point of first digit is lit up
@@ -176,7 +161,7 @@ void setup()
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
 SimplePatternList gPatterns = { solid_rainbow, Sine_Wave_V2, Rainbow_Palette, Star_Night, Random_Palette_Crossfade, Navy_Magenta_Palette, Running_Stripes, Ocean_Wave, rainbow_ish, Party_Palette, Palette_RP };
-uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
+uint8_t current_animation = 0; // Index number of which pattern is current
 
 void loop()
 {
@@ -188,9 +173,8 @@ void loop()
     SEG_SHOW_OFF();
     return; // exit and run loop() again
   }
-  gPatterns[gCurrentPatternNumber]();
+  gPatterns[current_animation]();
   previousMillis = millis();
-  segment_display();
   S1.tick(); // check status of button 1
   S2.tick(); // Check status of button 2
   S3.tick(); // Check status of button 3
@@ -199,10 +183,14 @@ void loop()
   if (BRIGHTNESS_MODIFY_check)
   {
     Brightness_Check();
-    BRIGHTNESS_MODIFY = true;
+    delay(1);
+    segment_activate(0, 0, 0, 0, 0, 0, 0, 0);
     return; // exit and run loop() again
   }
-  BRIGHTNESS_MODIFY = false;
+  animation_number_show();
+  if (warning1) {
+    display_segment(1, 16);
+  }
 }
 //End Loop
 
@@ -280,18 +268,18 @@ void S1_long_press_stop()
 void previousanimation()
 {
   Flash_Red();
-  if (gCurrentPatternNumber == 0)
+  if (current_animation == 0)
   {
-    gCurrentPatternNumber = (sizeof( gPatterns) / 2) - 1;
+    current_animation = (sizeof( gPatterns) / 2) - 1;
     return;
   }
-  gCurrentPatternNumber = (gCurrentPatternNumber - 1) % ARRAY_SIZE( gPatterns);
+  current_animation = (current_animation - 1) % ARRAY_SIZE( gPatterns);
 } //End Prevcious animation
 
 void nextanimation()
 {
   Flash_Green();
-  gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE( gPatterns);
+  current_animation = (current_animation + 1) % ARRAY_SIZE( gPatterns);
 }
 //End Next Animation
 
@@ -814,14 +802,14 @@ void Solid_Yellow_With_Delay()
 
 void EEPROM_write()
 {
-  EEPROM.put(animation_mem_address, gCurrentPatternNumber);
+  EEPROM.put(animation_mem_address, current_animation);
   EEPROM.put(brightness_mem_address, brightness);
   Flash_Yellow();
 }
 
 void EEPROM_read()
 {
-  EEPROM.get(animation_mem_address, gCurrentPatternNumber);
+  EEPROM.get(animation_mem_address, current_animation);
   EEPROM.get(brightness_mem_address, brightness);
 }
 
@@ -862,31 +850,15 @@ void higher_brightness()
   brightness = max_brightness;
 }
 
+void animation_number_show()
+{
+  Led_segment_show(current_animation);
+}
+
 void Brightness_Check()
 {
   uint8_t brightness_number = brightness - 100;
-  if ((brightness_number < 9999) && (brightness_number > 999))
-  {
-    display_segment(1, brightness_number % 10); // display brightness number on segment 1
-    display_segment(2, brightness_number / 10 % 10); // display brightness number on segment 2
-    display_segment(3, brightness_number / 100 % 10); // display brightness number on segment 3
-    display_segment(4, brightness_number / 1000 % 10); // display brightness number on segment 4
-    return;
-  }
-  if ((brightness_number < 999) && (brightness_number > 99))
-  {
-    display_segment(1, brightness_number % 10); // display brightness number on segment 1
-    display_segment(2, brightness_number / 10 % 10); // display brightness number on segment 2
-    display_segment(3, brightness_number / 100 % 10); // display brightness number on segment 3
-    return;
-  }
-  if ((brightness_number < 99) && (brightness_number > 9))
-  {
-    display_segment(1, brightness_number % 10); // display brightness number on segment 1
-    display_segment(2, brightness_number / 10 % 10); // display brightness number on segment 2
-    return;
-  }
-  display_segment(1, brightness_number); // display brightness number on segment 1
+  Led_segment_show(brightness_number);
 }
 
 void SEG_SHOW_OFF()
@@ -898,146 +870,4 @@ void SEG_SHOW_OFF()
   display_segment(3, 0); // display number 0 on segment 3
   display_segment(2, 15); // display letter f on segment 2
   display_segment(1, 15); // display letter f on segment 1
-}
-
-void LETTER_N()
-{
-  segment_activate(1, 1, 1, 0, 1, 1, 0, 0);
-}
-void LETTER_I_DP()
-{
-  segment_activate(0, 0, 0, 0, 1, 1, 0, 1);
-}
-void LETTER_J()
-{
-  segment_activate(0, 1, 1, 1, 0, 0, 0, 0);
-}
-
-void segment_activate(bool A, bool B, bool C, bool D, bool E, bool F, bool G, bool H)
-{
-  digitalWrite(SEG_A, A);
-  digitalWrite(SEG_B, B);
-  digitalWrite(SEG_C, C);
-  digitalWrite(SEG_D, D);
-  digitalWrite(SEG_E, E);
-  digitalWrite(SEG_F, F);
-  digitalWrite(SEG_G, G);
-  digitalWrite(SEG_DP, H);
-}
-void digit_activate(bool dig1, bool dig2, bool dig3, bool dig4)
-{
-  digitalWrite(DIG_1, dig1);
-  digitalWrite(DIG_2, dig2);
-  digitalWrite(DIG_3, dig3);
-  digitalWrite(DIG_4, dig4);
-}
-
-void display_segment(uint8_t dig, uint8_t number)
-{
-  switch (dig)
-  {
-    case 1: // First digit from right
-      digit_activate(0, 1, 1, 1);
-      break;
-    case 2: // Second digit from right
-      digit_activate(1, 0, 1, 1);
-      break;
-    case 3: // Third digit from right
-      digit_activate(1, 1, 0, 1);
-      break;
-    case 4: // Fourth digit from right
-      digit_activate(1, 1, 1, 0);
-      break;
-  }
-  switch (number)
-  {
-    case 1: // 1
-      segment_activate(0, 1, 1, 0, 0, 0, 0, 0);
-      break;
-    case 2: // 2
-      segment_activate(1, 1, 0, 1, 1, 0, 1, 0);
-      break;
-    case 3: // 3
-      segment_activate(1, 1, 1, 1, 0, 0, 1, 0);
-      break;
-    case 4: // 4
-      segment_activate(0, 1, 1, 0, 0, 1, 1, 0);
-      break;
-    case 5: // 5
-      segment_activate(1, 0, 1, 1, 0, 1, 1, 0);
-      break;
-    case 6: // 6
-      segment_activate(1, 0, 1, 1, 1, 1, 1, 0);
-      break;
-    case 7: // 7
-      segment_activate(1, 1, 1, 0, 0, 0, 0, 0);
-      break;
-    case 8: // 8
-      segment_activate(1, 1, 1, 1, 1, 1, 1, 0);
-      break;
-    case 9: // 9
-      segment_activate(1, 1, 1, 1, 0, 1, 1, 0);
-      break;
-    case 0: // 0
-      segment_activate(1, 1, 1, 1, 1, 1, 0, 0);
-      break;
-    case 10: // A
-      segment_activate(1, 1, 1, 0, 1, 1, 1, 0);
-      break;
-    case 11: // B
-      segment_activate(1, 1, 1, 1, 1, 1, 1, 0);
-      break;
-    case 12: // C
-      segment_activate(1, 0, 0, 1, 1, 1, 0, 0);
-      break;
-    case 13: // D
-      segment_activate(1, 1, 1, 1, 1, 1, 0, 0);
-      break;
-    case 14: // E
-      segment_activate(1, 0, 0, 1, 1, 1, 1, 0);
-      break;
-    case 15: // F
-      segment_activate(1, 0, 0, 0, 1, 1, 1, 0);
-      break;
-    case 16: // Decimal point
-      segment_activate(0, 0, 0, 0, 0, 0, 0, 1);
-  }
-  delay(1);
-  segment_activate(0, 0, 0, 0, 0, 0, 0, 0);
-  delay(1);
-} // End segment display
-
-void segment_display()
-{
-  if (BRIGHTNESS_MODIFY)
-  {
-    delay(1);
-    segment_activate(0, 0, 0, 0, 0, 0, 0, 0);
-    return;
-  }
-  if (warning1) {
-    display_segment(1, 16);
-  }
-  if ((gCurrentPatternNumber < 9999) && (gCurrentPatternNumber > 999))
-  {
-    display_segment(1, gCurrentPatternNumber % 10); // display animation number on segment 1
-    display_segment(2, gCurrentPatternNumber / 10 % 10); // display animation number on segment 2
-    display_segment(3, gCurrentPatternNumber / 100 % 10); // display animation number on segment 3
-    display_segment(4, gCurrentPatternNumber / 1000 % 10); // display animation number on segment 4
-    return;
-  }
-  if ((gCurrentPatternNumber < 999) && (gCurrentPatternNumber > 99))
-  {
-    display_segment(1, gCurrentPatternNumber % 10); // display animation number on segment 1
-    display_segment(2, gCurrentPatternNumber / 10 % 10); // display animation number on segment 2
-    display_segment(3, gCurrentPatternNumber / 100 % 10); // display animation number on segment 3
-    return;
-  }
-  if ((gCurrentPatternNumber < 99) && (gCurrentPatternNumber > 9))
-  {
-    display_segment(1, gCurrentPatternNumber % 10); // display animation number on segment 1
-    display_segment(2, gCurrentPatternNumber / 10 % 10); // display animation number on segment 2
-    return;
-  }
-  display_segment(1, gCurrentPatternNumber); // display animation number on segment 1
 }
