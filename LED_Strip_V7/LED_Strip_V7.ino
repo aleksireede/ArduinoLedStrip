@@ -160,7 +160,7 @@ void setup()
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
-SimplePatternList gPatterns = { solid_rainbow, Sine_Wave_V2, Rainbow_Palette, Star_Night, Random_Palette_Crossfade, Navy_Magenta_Palette, Running_Stripes, Ocean_Wave, rainbow_ish, Party_Palette, Palette_RP, test_Palette};
+SimplePatternList gPatterns = { solid_rainbow, Sine_Wave_V2, Rainbow_Palette, Star_Night, Random_Palette_Crossfade, Navy_Magenta_Palette, Running_Stripes, Ocean_Wave, rainbow_ish, Party_Palette, Palette_RP, vih_sin_Palette, pink_green_palette};
 uint8_t current_animation = 0; // Index number of which pattern is current
 
 void loop()
@@ -182,12 +182,13 @@ void loop()
   FastLED.setBrightness(brightness);
   if (BRIGHTNESS_MODIFY_check)
   {
-    Brightness_Check();
+    uint8_t brightness_number = brightness - 100;
+    Led_segment_show(brightness_number);
     delay(1);
     segment_activate(0, 0, 0, 0, 0, 0, 0, 0);
     return; // exit and run loop() again
   }
-  animation_number_show();
+  Led_segment_show(current_animation);
   if (warning1) {
     display_segment(1, 16);
   }
@@ -612,6 +613,23 @@ void Party_Palette()
   base_cycle(10);
 }
 
+void pink_green_palette()
+{
+  //fill_solid(leds, LED_COUNT, CRGB(255, 255, 255));
+  //navy blue and green apple
+  CRGB navysininen = CRGB( 255, 0, 255);;
+  CRGB vih_omena = CRGB( 0, 255, 0);;
+
+  currentPalette = CRGBPalette16(
+                     navysininen, navysininen, navysininen, vih_omena,
+                     vih_omena, vih_omena, navysininen, navysininen,
+                     navysininen, vih_omena, vih_omena, vih_omena,
+                     navysininen, navysininen, vih_omena, vih_omena);
+  currentBlending = LINEARBLEND;
+  Palette_filler(base_index, 3);
+  base_cycle(30);
+}
+
 void Navy_Magenta_Palette()
 {
   //navy blue and magenta(pink)
@@ -628,9 +646,9 @@ void Navy_Magenta_Palette()
   base_cycle(30);
 } //Purple and Green palette
 
-void test_Palette()
+void vih_sin_Palette()
 {
-  //navy blue and magenta(pink)
+  //navy blue and green apple
   CRGB navysininen = CRGB::Navy;
   CRGB vih_omena = CRGB( 0, 255, 0);;
 
@@ -787,7 +805,7 @@ void base_cycle(uint8_t fastness)
 {
   if (Reverse_Direction)
   {
-    EVERY_N_MILLISECONDS(fastness/2)
+    EVERY_N_MILLISECONDS(fastness / 2)
     { // Speed that effects almost all animations
       base_index--;
     }
@@ -818,17 +836,6 @@ void higher_brightness()
     return;
   }
   brightness = max_brightness;
-}
-
-void animation_number_show()
-{
-  Led_segment_show(current_animation);
-}
-
-void Brightness_Check()
-{
-  uint8_t brightness_number = brightness - 100;
-  Led_segment_show(brightness_number);
 }
 
 void SEG_SHOW_OFF()
