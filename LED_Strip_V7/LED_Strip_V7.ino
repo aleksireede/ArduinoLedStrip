@@ -160,7 +160,7 @@ void setup()
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
-SimplePatternList gPatterns = { solid_rainbow, Sine_Wave_V2, Rainbow_Palette, Star_Night, Random_Palette_Crossfade, Navy_Magenta_Palette, Running_Stripes, Ocean_Wave, rainbow_ish, Party_Palette, Palette_RP, vih_sin_Palette, pink_green_palette};
+SimplePatternList gPatterns = { solid_rainbow, Sine_Wave_V2, Rainbow_Palette, Star_Night, Random_Palette_Crossfade, Navy_Magenta_Palette, Running_Stripes, Ocean_Wave, rainbow_ish, Party_Palette, Palette_RP, vih_sin_Palette, pink_green_palette, white};
 uint8_t current_animation = 0; // Index number of which pattern is current
 
 void loop()
@@ -684,6 +684,11 @@ void solid_rainbow()
   fill_rainbow(leds, LED_COUNT, base_index,0);
   base_cycle(25);
 } //solid rainbow
+
+void white()
+{
+  fill_solid(leds,LED_COUNT,CRGB(255,255,255));
+}
 
 void rainbow_ish()
 { //Rainbowish animation with changing pattern
