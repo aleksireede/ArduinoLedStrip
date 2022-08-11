@@ -681,7 +681,7 @@ void Palette_RP()
 
 void solid_rainbow()
 {
-  fill_solid(leds, LED_COUNT, CHSV(cos8(base_index), 255, 255));
+  fill_rainbow(leds, LED_COUNT, base_index,0);
   base_cycle(25);
 } //solid rainbow
 
