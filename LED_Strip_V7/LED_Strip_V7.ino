@@ -2,43 +2,43 @@
 #include <OneButton.h>
 #include <EEPROM.h>
 #include "LED_segment.h"
-// Inlcude libraries
+// Include libraries
 
 // Led Strip
-#define LED_COUNT 88
-struct CRGB leds[LED_COUNT];
-#define LED_STRIP_PIN 3
-#define LED_TYPE WS2812B
-#define COLOR_ORDER GRB
+#define amount_of_leds 88
+struct CRGB leds[amount_of_leds];
+#define pin_led_strip 3
+#define strip_type WS2812B
+#define color_order GRB
 uint8_t brightness = 255;
 uint8_t max_brightness = 255;
 uint8_t min_brightness = 100;
 // End Led Strip
 
 // Button
-#define S1_pin A0 // Vihr
-#define S2_pin A5 // PUN
+#define green_button_pin A0 // Green Button
+#define red_button_pin A5   // Red Button
 uint8_t button_delay = 0;
-#define S3_pin_no 12
-long previousMillis = 0; // used for counting seconds
+#define black_button_pin 12
+long previous_time = 0;    // used for counting seconds
 long off_interval = 15000; // 15 second delay when pressing the off button before the off text fades
 // End Button
 
 // MISC
-bool save_on_shutdown = false;        // save values to rom on "shutdown" when leds go black
-uint8_t base_index = 0;               // Rotating index value used by many animations
-uint8_t base_speed = 0;               // base speed of all animations
-uint8_t animation_mem_address = 0;    // Location we want the data to be put.
-uint8_t brightness_mem_address = 4;   // Location of brightness on eeprom
-TBlendType currentBlending;           // NOBLEND or LINEARBLEND
-bool ON_OFF_STATE = true;
-bool BRIGHTNESS_MODIFY_check = false;
-bool Reverse_Direction = false;
-bool warning1 = false; // Warning if direction is unchangeable. decimal point of first digit is lit up
+bool save_on_shutdown = false;      // save values to rom on "shutdown" when leds go black
+uint8_t base_index = 0;             // Rotating index value used by many animations
+uint8_t base_speed = 0;             // base speed of all animations
+uint8_t animation_mem_address = 0;  // Location we want the data to be put.
+uint8_t brightness_mem_address = 4; // Location of brightnesses value on eeprom
+TBlendType currentBlending;         // NOBLEND or LINEARBLEND
+bool is_running = true;             // Used to determine if we are in on or off state
+bool show_brightness = false;       // this is needed so that when we want to see the brightness we don't show the animation number
+bool animation_reverse = false;     // We need this when we want to chnage the direction of the animation
+bool warning1 = false;              // Warning if direction is unchangeable. decimal point of first digit is lit up
 // End MISC
 
 // Sine V1 variables
-uint8_t maxChanges = 24; // Value for blending between palettes.
+uint8_t maxChanges = 24;  // Value for blending between palettes.
 uint8_t thisrot = 1;      // You can change how quickly the hue rotates for this Speedy_Wave.
 int8_t thisspeed = 8;     // You can change the speed of the Speedy_Wave, and use negative values.
 uint8_t allfreq = 32;     // You can change the frequency, thus distance between bars.
@@ -54,12 +54,12 @@ int startIndex = 0;
 // Sine V2 variables
 CRGBPalette16 thisPalette;
 CRGBPalette16 thatPalette;
-uint8_t thishue;            // You can change the starting hue value for the first Speedy_Wave.
-uint8_t thathue;            // You can change the starting hue for other Speedy_Wave.
-uint8_t thatrot;            // You can change how quickly the hue rotates for the other Speedy_Wave. Currently 0.
-uint8_t allsat;             // I like 'em fully saturated with colour.
-uint8_t thisdir;
-uint8_t thatdir;
+uint8_t thishue;    // You can change the starting hue value for the first Speedy_Wave.
+uint8_t thathue;    // You can change the starting hue for other Speedy_Wave.
+uint8_t thatrot;    // You can change how quickly the hue rotates for the other Speedy_Wave. Currently 0.
+uint8_t allsat;     // I like 'em fully saturated with colour.
+uint8_t thisdir;    // i don't know what it does so don't touch it
+uint8_t thatdir;    // i don't know what it does so don't touch it
 uint8_t alldir;     // You can change direction.
 int8_t thatspeed;   // You can change the speed.
 int thatphase;      // Phase change value gets calculated.
@@ -82,23 +82,22 @@ uint16_t Yn;
 uint8_t index;
 // End Palette definitions
 
-
 // Buttons
 OneButton S1 = OneButton(
-                 S1_pin,  // Input pin for the button
-                 true,        // Button is active LOW
-                 true         // Enable internal pull-up resistor
-               );
+    green_button_pin, // Input pin for the button
+    true,             // Button is active LOW
+    true              // Enable internal pull-up resistor
+);
 OneButton S2 = OneButton(
-                 S2_pin,  // Input pin for the button
-                 true,        // Button is active LOW
-                 true         // Enable internal pull-up resistor
-               );
+    red_button_pin, // Input pin for the button
+    true,           // Button is active LOW
+    true            // Enable internal pull-up resistor
+);
 OneButton S3 = OneButton(
-                 S3_pin_no,  // Input pin for the button
-                 true,        // Button is active LOW
-                 true         // Enable internal pull-up resistor
-               );
+    black_button_pin, // Input pin for the button
+    true,             // Button is active LOW
+    true              // Enable internal pull-up resistor
+);
 // End Buttons
 
 void setup()
@@ -106,29 +105,29 @@ void setup()
   Serial.begin(9600);
   delay(1000);
   // S1
-  S1.setDebounceTicks(10);// Prevent accidental double press
-  S1.setPressTicks(500); // that is the time when LongPressStart is called
-  S1.setClickTicks(250); // delay differentiating single clocks from double clicks
+  S1.setDebounceTicks(10); // Prevent accidental double press
+  S1.setPressTicks(500);   // that is the time when LongPressStart is called
+  S1.setClickTicks(250);   // delay differentiating single clocks from double clicks
 
-  S1.attachClick(S1_Press); // attach normal press to S1 (red button)
-  S1.attachDuringLongPress(S1_long_press); // attach long press to S1 (red button)
+  S1.attachClick(S1_Press);                   // attach normal press to S1 (red button)
+  S1.attachDuringLongPress(S1_long_press);    // attach long press to S1 (red button)
   S1.attachLongPressStop(S1_long_press_stop); // called when long press stopped
   S1.attachDoubleClick(Check_brightness);
   // S2
-  S2.setPressTicks(500); // that is the time when LongPressStart is called
-  S2.setClickTicks(250); // delay differentiating single clocks from double clicks
-  S2.setDebounceTicks(10);// Prevent accidental double press
+  S2.setPressTicks(500);   // that is the time when LongPressStart is called
+  S2.setClickTicks(250);   // delay differentiating single clocks from double clicks
+  S2.setDebounceTicks(10); // Prevent accidental double press
 
-  S2.attachClick(S2_Press); // attach normal press to S2 (green button)
-  S2.attachDuringLongPress(S2_long_press); // attach long press to S2 (green button)
-  S2.attachDoubleClick(Check_brightness); // attach double press to S2 (green button)
+  S2.attachClick(S2_Press);                   // attach normal press to S2 (green button)
+  S2.attachDuringLongPress(S2_long_press);    // attach long press to S2 (green button)
+  S2.attachDoubleClick(Check_brightness);     // attach double press to S2 (green button)
   S2.attachLongPressStop(S2_long_press_stop); // called when long press stops
   // S3
-  S3.setDebounceTicks(10);// Prevent accidental double press
-  S3.setClickTicks(250); // delay differentiating single clocks from double clicks
-  S3.attachClick(ON_OFF_Press);// attach normal press to ON_OFF_BUTTON
-  S3.attachDoubleClick(WRITE_TO_EEPROM); // write current animation to memory
-  S3.attachLongPressStart(Change_Direction); //change direction of the led strip
+  S3.setDebounceTicks(10);                   // Prevent accidental double press
+  S3.setClickTicks(250);                     // delay differentiating single clocks from double clicks
+  S3.attachClick(ON_OFF_Press);              // attach normal press to ON_OFF_BUTTON
+  S3.attachDoubleClick(WRITE_TO_EEPROM);     // write current animation to memory
+  S3.attachLongPressStart(Change_Direction); // change direction of the led strip
 
   pinMode(SEG_A, OUTPUT);
   pinMode(SEG_B, OUTPUT);
@@ -144,7 +143,7 @@ void setup()
   pinMode(DIG_4, OUTPUT);
 
   FastLED.setBrightness(brightness);
-  FastLED.addLeds<LED_TYPE, LED_STRIP_PIN, COLOR_ORDER>(leds, LED_COUNT).setCorrection(TypicalLEDStrip); // GRB ordering is typical
+  FastLED.addLeds<strip_type, pin_led_strip, color_order>(leds, amount_of_leds).setCorrection(TypicalLEDStrip); // GRB ordering is typical
   thisPalette = RainbowColors_p;
   thatPalette = OceanColors_p;
   currentBlending = LINEARBLEND;
@@ -153,19 +152,19 @@ void setup()
   X = Xorig;
   Y = Yorig; // Initialize the variables
 
-  Startup_Animation();
-  EEPROM_read();
+  Startup_Animation(); // Run a single short one-time animation when powering on the led strip
+  EEPROM_read();       // Read last saved vlues and return to the last saved animation and brightness
 }
-//End Setup
+// End Setup
 
 // List of patterns to cycle through.  Each is defined as a separate function below.
 typedef void (*SimplePatternList[])();
-SimplePatternList gPatterns = { solid_rainbow, Sine_Wave_V2, Rainbow_Palette, Star_Night, Random_Palette_Crossfade, Navy_Magenta_Palette, Running_Stripes, Ocean_Wave, rainbow_ish, Party_Palette, Palette_RP, vih_sin_Palette, pink_green_palette, white};
+SimplePatternList gPatterns = {color_cycle, animation_custom1, animation_rainbowstripe, animation_nightsky, animation_randomcolors, animation_running_dots, animation_skycolors, custom_rainbow_animation, animation_partycolors, animation_red_purple, animation_green_blue, animation_purple_green, animation_pink_aqua, white};
 uint8_t current_animation = 0; // Index number of which pattern is current
 
 void loop()
 {
-  if (!ON_OFF_STATE) // check if off state enabled
+  if (!is_running) // this code will run when we press the black button
   {
     S3.tick();
     FastLED.setBrightness(0);
@@ -173,27 +172,28 @@ void loop()
     SEG_SHOW_OFF();
     return; // exit and run loop() again
   }
-  gPatterns[current_animation]();
-  previousMillis = millis();
-  S1.tick(); // check status of button 1
-  S2.tick(); // Check status of button 2
-  S3.tick(); // Check status of button 3
+  gPatterns[current_animation](); // this calls the current animation function
+  previous_time = millis();       // this keeps track of time since the device was powered on
+  S1.tick();                      // check status of button 1
+  S2.tick();                      // Check status of button 2
+  S3.tick();                      // Check status of button 3
   FastLED.show();
   FastLED.setBrightness(brightness);
-  if (BRIGHTNESS_MODIFY_check)
+  if (show_brightness) // this is used when we want to show the brigthness value in our 7-segment 4-digit display
   {
-    uint8_t brightness_number = brightness - 100;
+    uint8_t brightness_number = brightness - min_brightness; // we want the brigthness to start from 0 so we need to subtract minimun brightness from it
     Led_segment_show(brightness_number);
     delay(1);
     segment_activate(0, 0, 0, 0, 0, 0, 0, 0);
     return; // exit and run loop() again
   }
   Led_segment_show(current_animation);
-  if (warning1) {
+  if (warning1)
+  {
     display_segment(1, 16);
   }
 }
-//End Loop
+// End Loop
 
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 
@@ -201,14 +201,14 @@ void S1_Press()
 {
   EVERY_N_MILLISECONDS(button_delay)
   {
-    previousanimation();
+    previous_animation();
   }
   warning1 = false;
 }
 
 void S2_long_press()
 {
-  BRIGHTNESS_MODIFY_check = true;
+  show_brightness = true;
   EVERY_N_MILLISECONDS(50)
   {
     higher_brightness();
@@ -217,12 +217,12 @@ void S2_long_press()
 
 void Change_Direction()
 {
-  Reverse_Direction = !Reverse_Direction;
+  animation_reverse = !animation_reverse;
 }
 
 void S1_long_press()
 {
-  BRIGHTNESS_MODIFY_check = true;
+  show_brightness = true;
   EVERY_N_MILLISECONDS(50)
   {
     lower_brightness();
@@ -230,14 +230,14 @@ void S1_long_press()
 }
 void Check_brightness()
 {
-  BRIGHTNESS_MODIFY_check = !BRIGHTNESS_MODIFY_check;
+  show_brightness = !show_brightness;
 }
 
 void S2_Press()
 {
   EVERY_N_MILLISECONDS(button_delay)
   {
-    nextanimation();
+    next_animation();
   }
   warning1 = false;
 }
@@ -252,35 +252,35 @@ void WRITE_TO_EEPROM()
 
 void ON_OFF_Press()
 {
-  ON_OFF_STATE = !ON_OFF_STATE;
+  is_running = !is_running;
 }
-//End Button check
+// End Button check
 
 void S2_long_press_stop()
 {
-  BRIGHTNESS_MODIFY_check = false;
+  show_brightness = false;
 }
 
 void S1_long_press_stop()
 {
-  BRIGHTNESS_MODIFY_check = false;
+  show_brightness = false;
 }
 
-void previousanimation()
+void previous_animation()
 {
   if (current_animation == 0)
   {
-    current_animation = (sizeof( gPatterns) / 2) - 1;
+    current_animation = (sizeof(gPatterns) / 2) - 1;
     return;
   }
-  current_animation = (current_animation - 1) % ARRAY_SIZE( gPatterns);
-} //End Prevcious animation
+  current_animation = (current_animation - 1) % ARRAY_SIZE(gPatterns);
+} // End Prevcious animation
 
-void nextanimation()
+void next_animation()
 {
-  current_animation = (current_animation + 1) % ARRAY_SIZE( gPatterns);
+  current_animation = (current_animation + 1) % ARRAY_SIZE(gPatterns);
 }
-//End Next Animation
+// End Next Animation
 
 void SetupRandomColorPalette()
 {
@@ -310,83 +310,85 @@ void ChangeMe()
   lastSecond = secondHand;
   switch (secondHand)
   {
-    case 0:
-      thisrot = 1;
-      thatrot = 1;
-      thisPalette = PartyColors_p;
-      thatPalette = PartyColors_p;
-      break;
-    case 5:
-      thisrot = 0;
-      thatdir = 1;
-      thatspeed = -4;
-      thisPalette = ForestColors_p;
-      thatPalette = OceanColors_p;
-      break;
-    case 10:
-      thatrot = 0;
-      thisPalette = PartyColors_p;
-      thatPalette = RainbowColors_p;
-      break;
-    case 15:
-      allfreq = 16;
-      thisdir = 1;
-      thathue = 128;
-      break;
-    case 20:
-      thiscutoff = 96;
-      thatcutoff = 240;
-      break;
-    case 25:
-      thiscutoff = 96;
-      thatdir = 0;
-      thatcutoff = 96;
-      thisrot = 1;
-      break;
-    case 30:
-      thisspeed = -4;
-      thisdir = 0;
-      thatspeed = -4;
-      break;
-    case 35:
-      thiscutoff = 128;
-      thatcutoff = 128;
-      break;
-    case 40:
-      thisspeed = 3;
-      break;
-    case 45:
-      thisspeed = 3;
-      thatspeed = -3;
-      break;
-    case 50:
-      thisspeed = 2;
-      thatcutoff = 96;
-      thiscutoff = 224;
-      thatspeed = 3;
-      break;
-    case 55:
-      resetvars();
-      break;
-    case 60:
-      break;
+  case 0:
+    thisrot = 1;
+    thatrot = 1;
+    thisPalette = PartyColors_p;
+    thatPalette = PartyColors_p;
+    break;
+  case 5:
+    thisrot = 0;
+    thatdir = 1;
+    thatspeed = -4;
+    thisPalette = ForestColors_p;
+    thatPalette = OceanColors_p;
+    break;
+  case 10:
+    thatrot = 0;
+    thisPalette = PartyColors_p;
+    thatPalette = RainbowColors_p;
+    break;
+  case 15:
+    allfreq = 16;
+    thisdir = 1;
+    thathue = 128;
+    break;
+  case 20:
+    thiscutoff = 96;
+    thatcutoff = 240;
+    break;
+  case 25:
+    thiscutoff = 96;
+    thatdir = 0;
+    thatcutoff = 96;
+    thisrot = 1;
+    break;
+  case 30:
+    thisspeed = -4;
+    thisdir = 0;
+    thatspeed = -4;
+    break;
+  case 35:
+    thiscutoff = 128;
+    thatcutoff = 128;
+    break;
+  case 40:
+    thisspeed = 3;
+    break;
+  case 45:
+    thisspeed = 3;
+    thatspeed = -3;
+    break;
+  case 50:
+    thisspeed = 2;
+    thatcutoff = 96;
+    thiscutoff = 224;
+    thatspeed = 3;
+    break;
+  case 55:
+    resetvars();
+    break;
+  case 60:
+    break;
   }
 
 } // ChangeMe()
 
 void two_sin()
 {
-  if (Reverse_Direction)
+  if (animation_reverse)
   {
     thisdir ? thisphase += beatsin8(thisspeed, 2, 10) : thisphase += beatsin8(thisspeed, 2, 10);
     thatdir ? thatphase += beatsin8(thisspeed, 2, 10) : thatphase += beatsin8(thatspeed, 2, 10);
-  } else {
+  }
+  else
+  {
     thisdir ? thisphase += beatsin8(thisspeed, 2, 10) : thisphase -= beatsin8(thisspeed, 2, 10);
     thatdir ? thatphase += beatsin8(thisspeed, 2, 10) : thatphase -= beatsin8(thatspeed, 2, 10);
   }
   thishue += thisrot; // Hue rotation is fun for thisSpeedy_Wave.
   thathue += thatrot; // It's also fun for thatSpeedy_Wave.
-  for (int k = 0; k < LED_COUNT - 1; k++)
+  for (int k = 0; k < amount_of_leds - 1; k++)
   {
     int thisbright = qsuba(cubicwave8((k * allfreq) + thisphase), thiscutoff);       // qsub sets a minimum value called thiscutoff. If < thiscutoff, then bright = 0. Otherwise, bright = 128 (as defined in qsub)..
     int thatbright = qsuba(cubicwave8((k * allfreq) + 128 + thatphase), thatcutoff); // This Speedy_Wave is 180 degrees out of phase (with the value of 128).
@@ -394,11 +396,11 @@ void two_sin()
     leds[k] = ColorFromPalette(thisPalette, thishue, thisbright, currentBlending);
     leds[k] += ColorFromPalette(thatPalette, thathue, thatbright, currentBlending);
   }
-  nscale8(leds, LED_COUNT, fadeval);
+  nscale8(leds, amount_of_leds, fadeval);
 
 } // two_sin()
 
-void Sine_Wave_V2()
+void animation_custom1()
 {
   ChangeMe();
 
@@ -407,7 +409,7 @@ void Sine_Wave_V2()
     two_sin(); // Routine is still delay based, but at least it's now a non-blocking day.
   }
 }
-//End Double Sine_Wave_V1
+// End Double Sine_Wave_V1
 
 void resetvars()
 { // Reset the variable back to the beginning.
@@ -432,15 +434,15 @@ void resetvars()
 
 } // resetvars()
 
-void Rainbow_Palette()
+void animation_rainbowstripe()
 {
   currentPalette = RainbowColors_p;
   currentBlending = LINEARBLEND;
   Palette_filler(base_index, 6);
   base_cycle(10);
-} // Rainbow_Palette()
+} // animation_rainbowstripe()
 
-void Star_Night_Animation()
+void animation_nightsky_Animation()
 {
   warning1 = true;
   EVERY_N_SECONDS(5)
@@ -466,14 +468,14 @@ void Star_Night_Animation()
 
   CRGB newcolor = ColorFromPalette(currentPalette, index, 255, LINEARBLEND);
 
-  //  nblend(leds[X%LED_COUNT-1], newcolor, 224);          // Try and smooth it out a bit. Higher # means less smoothing.
-  nblend(leds[map(X, 0, 65535, 0, LED_COUNT)], newcolor, 224); // Try and smooth it out a bit. Higher # means less smoothing.
+  //  nblend(leds[X%amount_of_leds-1], newcolor, 224);          // Try and smooth it out a bit. Higher # means less smoothing.
+  nblend(leds[map(X, 0, 65535, 0, amount_of_leds)], newcolor, 224); // Try and smooth it out a bit. Higher # means less smoothing.
 
-  fadeToBlackBy(leds, LED_COUNT, 16); // 8 bit, 1 = slow, 255 = fast
+  fadeToBlackBy(leds, amount_of_leds, 16); // 8 bit, 1 = slow, 255 = fast
 
-} // Star_Night_Animation()
+} // animation_nightsky_Animation()
 
-void Star_Night()
+void animation_nightsky()
 {
   EVERY_N_MILLISECONDS(60)
   {
@@ -482,15 +484,15 @@ void Star_Night()
 
   EVERY_N_MILLISECONDS(50)
   {
-    Star_Night_Animation();
+    animation_nightsky_Animation();
   }
 }
-//End star Night
+// End star Night
 
 void FillLEDsFromPaletteColors(uint8_t colorIndex)
 {
 
-  for (int i = 0; i < LED_COUNT; i++)
+  for (int i = 0; i < amount_of_leds; i++)
   {
     leds[i] = ColorFromPalette(currentPalette, colorIndex + sin8(i * 16), 255);
     colorIndex += 3;
@@ -515,29 +517,29 @@ void ChangePalettePeriodically()
   CRGB w = CRGB::White;
   switch (secondHand)
   {
-    case 0:
-      targetPalette = RainbowColors_p;
-      break;
-    case 10:
-      targetPalette = CRGBPalette16(g, g, b, b, p, p, b, b, g, g, b, b, p, p, b, b);
-      break;
-    case 20:
-      targetPalette = CRGBPalette16(b, b, b, w, b, b, b, w, b, b, b, w, b, b, b, w);
-      break;
-    case 30:
-      targetPalette = LavaColors_p;
-      break;
-    case 40:
-      targetPalette = CloudColors_p;
-      break;
-    case 50:
-      targetPalette = PartyColors_p;
-      break;
+  case 0:
+    targetPalette = RainbowColors_p;
+    break;
+  case 10:
+    targetPalette = CRGBPalette16(g, g, b, b, p, p, b, b, g, g, b, b, p, p, b, b);
+    break;
+  case 20:
+    targetPalette = CRGBPalette16(b, b, b, w, b, b, b, w, b, b, b, w, b, b, b, w);
+    break;
+  case 30:
+    targetPalette = LavaColors_p;
+    break;
+  case 40:
+    targetPalette = CloudColors_p;
+    break;
+  case 50:
+    targetPalette = PartyColors_p;
+    break;
   }
 
 } // ChangePalettePeriodically()
 
-void Random_Palette_Crossfade()
+void animation_randomcolors()
 {
   warning1 = true;
   ChangePalettePeriodically();
@@ -554,58 +556,61 @@ void Random_Palette_Crossfade()
     FillLEDsFromPaletteColors(startIndex);
   }
 }
-//End Random Crossfade palette
+// End Random Crossfade palette
 
-void Running_Stripes()
+void animation_running_dots()
 { // Eight colored dots, weaving in and out of sync with each other.
   warning1 = true;
-  fadeToBlackBy(leds, LED_COUNT, 20);
+  fadeToBlackBy(leds, amount_of_leds, 20);
   byte dothue = 0;
 
   for (int i = 0; i < 8; i++)
   {
-    leds[beatsin16(i + 7, 0, LED_COUNT - 1)] |= CHSV(dothue, 200, 255);
+    leds[beatsin16(i + 7, 0, amount_of_leds - 1)] |= CHSV(dothue, 200, 255);
     dothue += 32;
   }
 
-} // Running_Stripes()
+} // animation_running-dots()
 
-void Ocean_Wave()
+void animation_skycolors()
 { // Colored stripes pulsing at a defined Beats-Per-Minute.
 
   uint8_t BeatsPerMinute = 62;
   currentBlending = LINEARBLEND;
-  CRGBPalette16 palette = OceanColors_p; //RainbowStripeColors_p
-  uint8_t beat = beat8(BeatsPerMinute, 64);//beatsin8(BeatsPerMinute, 64, 255) +
+  CRGBPalette16 palette = OceanColors_p;    // RainbowStripeColors_p
+  uint8_t beat = beat8(BeatsPerMinute, 64); // beatsin8(BeatsPerMinute, 64, 255) +
 
-  for (int i = 0; i < LED_COUNT; i++)
-  { //9948
+  for (int i = 0; i < amount_of_leds; i++)
+  { // 9948
     leds[i] = ColorFromPalette(palette, base_index + (i * 2), 255, currentBlending);
   }
   base_cycle(30);
 
-} // Ocean_Wave()
+} // animation_skycolors()
 
 void Palette_filler(uint8_t colorIndex, uint8_t speed_value)
 {
-  //Fills the leds with palette instead of pattern function
-  if (Reverse_Direction) {
-    for (int i = LED_COUNT; i > 0 ; --i)
+  // Fills the leds with palette instead of pattern function
+  if (animation_reverse)
+  {
+    for (int i = amount_of_leds; i > 0; --i)
     {
       leds[i] = ColorFromPalette(currentPalette, colorIndex, brightness, currentBlending);
       colorIndex -= speed_value;
     }
-  } else {
-    for (int i = 0; i < LED_COUNT; ++i)
+  }
+  else
+  {
+    for (int i = 0; i < amount_of_leds; ++i)
     {
       leds[i] = ColorFromPalette(currentPalette, colorIndex, brightness, currentBlending);
       colorIndex += speed_value;
     }
   }
 
-} //Palette Filler
+} // Palette Filler
 
-void Party_Palette()
+void animation_partycolors()
 {
   currentPalette = PartyColors_p;
   currentBlending = LINEARBLEND;
@@ -613,85 +618,88 @@ void Party_Palette()
   base_cycle(10);
 }
 
-void pink_green_palette()
+void animation_purple_green()
 {
-  //fill_solid(leds, LED_COUNT, CRGB(255, 255, 255));
-  //navy blue and green apple
-  CRGB navysininen = CRGB( 255, 0, 255);;
-  CRGB vih_omena = CRGB( 0, 255, 0);;
+  // fill_solid(leds, amount_of_leds, CRGB(255, 255, 255));
+  // navy blue and green apple
+  CRGB navy_blue = CRGB(255, 0, 255);
+  ;
+  CRGB green_apple = CRGB(0, 255, 0);
+  ;
 
   currentPalette = CRGBPalette16(
-                     navysininen, navysininen, navysininen, vih_omena,
-                     vih_omena, vih_omena, navysininen, navysininen,
-                     navysininen, vih_omena, vih_omena, vih_omena,
-                     navysininen, navysininen, vih_omena, vih_omena);
+      navy_blue, navy_blue, navy_blue, green_apple,
+      green_apple, green_apple, navy_blue, navy_blue,
+      navy_blue, green_apple, green_apple, green_apple,
+      navy_blue, navy_blue, green_apple, green_apple);
   currentBlending = LINEARBLEND;
   Palette_filler(base_index, 3);
   base_cycle(30);
 }
 
-void Navy_Magenta_Palette()
+void animation_green_blue()
 {
-  //navy blue and magenta(pink)
-  CRGB navysininen = CRGB::Navy;
-  CRGB magenta = CRGB::Magenta;
+  // navy blue and green apple
+  CRGB navy_blue = CRGB::Navy;
+  CRGB green_apple = CRGB(0, 255, 0);
+  ;
 
   currentPalette = CRGBPalette16(
-                     navysininen, navysininen, navysininen, magenta,
-                     magenta, magenta, navysininen, navysininen,
-                     navysininen, magenta, magenta, magenta,
-                     navysininen, navysininen, navysininen, magenta);
+      navy_blue, navy_blue, navy_blue, green_apple,
+      green_apple, green_apple, navy_blue, navy_blue,
+      navy_blue, green_apple, green_apple, green_apple,
+      navy_blue, navy_blue, green_apple, green_apple);
   currentBlending = LINEARBLEND;
   Palette_filler(base_index, 3);
   base_cycle(30);
-} //Purple and Green palette
+} // Purple and Green palette
 
-void vih_sin_Palette()
+void animation_pink_aqua()
 {
-  //navy blue and green apple
-  CRGB navysininen = CRGB::Navy;
-  CRGB vih_omena = CRGB( 0, 255, 0);;
+  // navy blue and green apple
+  CRGB pink = CHSV(HUE_PINK, 255, 255);
+  CRGB blue = CHSV(HUE_AQUA, 255, 255);
 
   currentPalette = CRGBPalette16(
-                     navysininen, navysininen, navysininen, vih_omena,
-                     vih_omena, vih_omena, navysininen, navysininen,
-                     navysininen, vih_omena, vih_omena, vih_omena,
-                     navysininen, navysininen, vih_omena, vih_omena);
+      pink, pink, pink, blue,
+      blue, blue, pink, pink,
+      pink, blue, blue, blue,
+      pink, pink, blue, blue);
   currentBlending = LINEARBLEND;
   Palette_filler(base_index, 3);
   base_cycle(30);
-} //Purple and Green palette
+} // Purple and Green palette
 
-void Palette_RP()
+void animation_red_purple()
 {
-  //purple, blue and red colors
+  // purple, blue and red colors
   CRGB blue = CHSV(HUE_BLUE, 255, 255);
   CRGB purple = CHSV(HUE_PURPLE, 255, 255);
   CRGB red = CHSV(HUE_RED, 255, 255);
 
   currentPalette = CRGBPalette16(
-                     red, red, purple, blue,
-                     blue, purple, red, red,
-                     purple, blue, blue, purple,
-                     red, red, purple, blue);
+      red, red, purple, blue,
+      blue, purple, red, red,
+      purple, blue, blue, purple,
+      red, red, purple, blue);
   currentBlending = LINEARBLEND;
   Palette_filler(base_index, 3);
   base_cycle(25);
-} //Purple, Blue and Red palette
+} // Purple, Blue and Red palette
 
-void solid_rainbow()
+void color_cycle()
 {
-  fill_rainbow(leds, LED_COUNT, base_index,0);
+  fill_rainbow(leds, amount_of_leds, base_index, 0);
   base_cycle(25);
-} //solid rainbow
+} // solid rainbow
 
 void white()
 {
-  fill_solid(leds,LED_COUNT,CRGB(255,255,255));
+  fill_solid(leds, amount_of_leds, CRGB(255, 255, 255));
 }
 
-void rainbow_ish()
-{ //Rainbowish animation with changing pattern
+void custom_rainbow_animation()
+{ // Rainbowish animation with changing pattern
   static uint16_t sPseudotime = 0;
   static uint16_t sLastMillis = 0;
   static uint16_t sHue16 = 0;
@@ -701,21 +709,24 @@ void rainbow_ish()
   uint16_t brightnessthetainc16 = beatsin88(203, (25 * 256), (40 * 256));
   uint8_t msmultiplier = beatsin88(147, 23, 60);
 
-  uint16_t hue16 = base_index * 256;//sHue16;
+  uint16_t hue16 = base_index * 256; // sHue16;
   uint16_t hueinc16 = beatsin88(113, 1, 3000);
 
   uint16_t ms = millis();
   uint16_t deltams = ms - sLastMillis;
   sLastMillis = ms;
-  if (Reverse_Direction) {
+  if (animation_reverse)
+  {
     sPseudotime -= deltams * msmultiplier;
-  } else {
+  }
+  else
+  {
     sPseudotime += deltams * msmultiplier;
   }
   sHue16 += deltams * beatsin88(400, 5, 9);
   uint16_t brightnesstheta16 = sPseudotime;
 
-  for (uint16_t i = 0; i < LED_COUNT; i++)
+  for (uint16_t i = 0; i < amount_of_leds; i++)
   {
     hue16 += hueinc16;
     uint8_t hue8 = hue16 / 256;
@@ -730,12 +741,12 @@ void rainbow_ish()
     CRGB newcolor = CHSV(hue8, sat8, bri8);
 
     uint16_t pixelnumber = i;
-    pixelnumber = (LED_COUNT - 1) - pixelnumber;
+    pixelnumber = (amount_of_leds - 1) - pixelnumber;
 
     nblend(leds[pixelnumber], newcolor, 64);
   }
   base_cycle(25);
-} //Rainbow-ish
+} // Rainbow-ish
 
 void Flash_Yellow()
 {
@@ -759,36 +770,36 @@ void Startup_Animation()
 
 void forward()
 {
-  for (int i = LED_COUNT / 2; i < LED_COUNT; i++)
+  for (int i = amount_of_leds / 2; i < amount_of_leds; i++)
   {
-    leds[i] = CHSV(i * 6, 255, 255); //right
-    leds[(i * -1) + LED_COUNT] = CHSV(i * 6, 255, 255); //left
+    leds[i] = CHSV(i * 6, 255, 255);                         // right
+    leds[(i * -1) + amount_of_leds] = CHSV(i * 6, 255, 255); // left
     FastLED.show();
     delay(2);
   }
 }
 void backward()
 {
-  for (int i = LED_COUNT; i > LED_COUNT / 2; i--)
+  for (int i = amount_of_leds; i > amount_of_leds / 2; i--)
   {
-    leds[i] = CHSV(0, 0, 0); //right
-    leds[(i * -1) + LED_COUNT] = CHSV(0, 0, 0); //left
+    leds[i] = CHSV(0, 0, 0);                         // right
+    leds[(i * -1) + amount_of_leds] = CHSV(0, 0, 0); // left
     FastLED.show();
     delay(2);
   }
 }
-//End Startup Animation
+// End Startup Animation
 
 void Solid_Black_With_Delay()
 {
-  fill_solid(leds, LED_COUNT, CRGB::Black);
+  fill_solid(leds, amount_of_leds, CRGB::Black);
   FastLED.show();
   delay(75);
 }
 
 void Solid_Yellow_With_Delay()
 {
-  fill_solid(leds, LED_COUNT, CRGB::Yellow);
+  fill_solid(leds, amount_of_leds, CRGB::Yellow);
   FastLED.show();
   delay(75);
 }
@@ -808,7 +819,7 @@ void EEPROM_read()
 
 void base_cycle(uint8_t fastness)
 {
-  if (Reverse_Direction)
+  if (animation_reverse)
   {
     EVERY_N_MILLISECONDS(fastness / 2)
     { // Speed that effects almost all animations
@@ -820,7 +831,6 @@ void base_cycle(uint8_t fastness)
   { // Speed that effects almost all animations
     base_index++;
   }
-
 }
 
 void lower_brightness()
@@ -845,11 +855,12 @@ void higher_brightness()
 
 void SEG_SHOW_OFF()
 {
-  if (millis() - previousMillis > off_interval) {
+  if (millis() - previous_time > off_interval)
+  {
     segment_activate(0, 0, 0, 0, 0, 0, 0, 0);
     return;
   }
-  display_segment(3, 0); // display number 0 on segment 3
+  display_segment(3, 0);  // display number 0 on segment 3
   display_segment(2, 15); // display letter f on segment 2
   display_segment(1, 15); // display letter f on segment 1
 }
