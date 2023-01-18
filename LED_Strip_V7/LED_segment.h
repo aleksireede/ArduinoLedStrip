@@ -18,6 +18,8 @@
 #define DIG_4 A4
 // END 7-segment display 4-digit
 
+void repeat_one_number(uint8_t number);
+void display_four_numbers(uint8_t number1, uint8_t number2, uint8_t number3, uint8_t number4);
 void display_segment(uint8_t dig, uint8_t number);
 void segment_activate(bool A, bool B, bool C, bool D, bool E, bool F, bool G, bool H);
 void digit_activate(bool dig1, bool dig2, bool dig3, bool dig4);
