@@ -7,6 +7,12 @@ void display_four_numbers(uint8_t number1, uint8_t number2, uint8_t number3, uin
   display_segment(2, number3);
   display_segment(1, number4);
 }
+void display_error(uint8_t number) {
+  display_segment(4, 14);
+  display_segment(3, -1);
+  display_segment(2, 253);
+  display_segment(1, number);
+}
 
 void repeat_one_number(uint8_t number) {
   display_segment(1, number);
@@ -129,6 +135,18 @@ void display_segment(uint8_t dig, uint8_t number) {
       break;
     case 109:  // 9 with dp
       segment_activate(1, 1, 1, 1, 0, 1, 1, 1);
+      break;
+    case 250:  //  loading animation phase 1
+      segment_activate(0, 0, 1, 0, 0, 0, 0, 0);
+      break;
+    case 251:  //  loading animation phase 2
+      segment_activate(0, 0, 0, 1, 0, 0, 0, 0);
+      break;
+    case 252:  //  loading animation phase 3
+      segment_activate(0, 0, 0, 0, 1, 0, 0, 0);
+      break;
+    case 253:  //  loading animation phase 4
+      segment_activate(0, 0, 0, 0, 0, 0, 1, 0);
       break;
     case 254:  // Decimal point
       segment_activate(0, 0, 0, 0, 0, 0, 0, 1);

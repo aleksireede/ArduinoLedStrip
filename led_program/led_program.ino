@@ -4,6 +4,10 @@
 #include "LED_segment.h"
 // Include libraries
 
+uint8_t special_counter = 0;
+uint8_t special_segment = 0;
+uint8_t registered_animation = 0;
+
 // Led Strip
 #define amount_of_leds 88
 struct CRGB leds[amount_of_leds];
@@ -511,7 +515,7 @@ void animation_skycolors() {  // Colored stripes pulsing at a defined Beats-Per-
 void Palette_filler(uint8_t colorIndex, uint8_t speed_value) {
   // Fills the leds with palette instead of pattern function
   if (animation_reverse) {
-    for (int i = amount_of_leds; i > 0; --i) {
+    for (int i = amount_of_leds; i >= 0; --i) {
       leds[i] = ColorFromPalette(currentPalette, colorIndex, brightness, currentBlending);
       colorIndex -= speed_value;
     }
@@ -665,7 +669,8 @@ void Startup_Animation() {
   }
   long time_was = millis();
   while (millis() - time_was < 2500) {
-    display_four_numbers(-1, -1, 101, 8);
+    loading_animation();
+    display_four_numbers(-1, 101, 9, 10);  // displays version number
   }
 }
 
@@ -676,6 +681,11 @@ void solid_single_color_with_short_delay(CRGB color) {
 }
 
 void EEPROM_write() {
+  EEPROM.get(animation_mem_address, registered_animation);
+  if (registered_animation == current_animation) {
+    error_display(1);
+    return;
+  }
   EEPROM.put(animation_mem_address, current_animation);
   EEPROM.put(brightness_mem_address, brightness);
   Flash_Yellow();
@@ -686,9 +696,48 @@ void EEPROM_read() {
   EEPROM.get(brightness_mem_address, brightness);
 }
 
+void error_display(uint8_t error_code) {
+  long time_was = millis();
+  uint8_t error_brigthness = 250;
+  bool error_direction = true;
+  while (millis() - time_was < 2500) {
+    uint8_t time_is = millis() - time_was;
+    switch (time_is) {
+      case 0:
+        error_brigthness = 255;
+        error_direction = true;
+        break;
+      case 750:
+        error_brigthness = 0;
+        error_direction = false;
+        break;
+      case 1500:
+        error_brigthness = 255;
+        error_direction = true;
+        break;
+      case 2250:
+        error_brigthness = 0;
+        error_direction = false;
+        break;
+    }
+    EVERY_N_MILLISECONDS(3) {
+      if (error_direction) {
+        error_brigthness -= 1;
+      } else {
+        error_brigthness += 1;
+      }
+    }
+    fill_solid(leds, amount_of_leds, CRGB(255, 0, 0));
+    FastLED.setBrightness(error_brigthness);
+    FastLED.show();
+    display_error(error_code);  // display error -1 -2 and so on.
+  }
+  FastLED.setBrightness(brightness);
+}
+
 void base_cycle(uint8_t fastness) {
   if (animation_reverse) {
-    EVERY_N_MILLISECONDS(fastness / 2) {  // Speed that effects almost all animations
+    EVERY_N_MILLISECONDS(fastness) {  // Speed that effects almost all animations
       base_index--;
     }
     return;
@@ -718,4 +767,29 @@ void SEG_SHOW_OFF() {
     return;
   }
   display_four_numbers(-1, 0, 15, 15);  // write OFF to display. -1 is none
+}
+
+void loading_animation() {  // spins a circle indicating a loading animation on the most lef digit
+  EVERY_N_MILLISECONDS(100) {
+    if (special_counter > 3) {
+      special_counter = 0;
+    } else {
+      special_counter += 1;
+    }
+  }
+  switch (special_counter) {
+    case 0:
+      special_segment = 250;
+      break;
+    case 1:
+      special_segment = 251;
+      break;
+    case 2:
+      special_segment = 252;
+      break;
+    case 3:
+      special_segment = 253;
+      break;
+  }
+  display_segment(4, special_segment);
 }
